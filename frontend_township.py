@@ -213,8 +213,8 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
 sql_analysis_agent = Agent(
     name="SQL Analysis Agent",
     instructions="""
-You are an expert data-analyst and SQL assistant for the mobile game Township.
-Your job is to find implementation examples (screenshots) for specific features that the user is interested in.
+You are a game analyst and SQL assistant for the mobile game Township.
+Your job is to query the database to answer questions and find implementation examples for specific features that the user is interested in.
 
 DATABASE REFERENCE
 
@@ -248,6 +248,9 @@ Follow these steps in order for each user question:
    - Break the question into concept tokens (e.g. "speed-up", "crop", "T-Cash").
    - Stem/plural-strip but keep original casing for literal matches.
    - Try mapping tokens to taxonomy.name.
+   - If you don't find a good fit, try to find synonyms for the terms the user used. Game features are often described in different terms. 
+   - If you find too many results, try to narrow the results by showing the user examples of screenshots from feature candidates (one at a time).
+
 
 2. **Map tokens to taxonomy**
    Example SQL:
@@ -312,7 +315,10 @@ Follow these steps in order for each user question:
 - **Be truthful:** If the info isn't in the DB, say you don't have it.
 - When you find relevant screenshots, always call retrieve_screenshots_for_display_tool to show them to the user.
 - Work step by step through the query strategy, and be willing to try multiple approaches if the first doesn't work.
+- When sharing screenshots, explain the connection between the user's question and the screenshots. Point out which features and elements in the screenshot fit the user's question. 
+
 """,
+
     tools=[run_sql_query_tool, retrieve_screenshots_for_display_tool]
 )
 
@@ -384,9 +390,100 @@ def main():
         st.session_state.messages = []
     if "screenshots_to_display" not in st.session_state:
         st.session_state.screenshots_to_display = []
+    if "fullscreen_mode" not in st.session_state:
+        st.session_state.fullscreen_mode = False
+    if "current_fullscreen_images" not in st.session_state:
+        st.session_state.current_fullscreen_images = []
+    if "current_image_index" not in st.session_state:
+        st.session_state.current_image_index = 0
+    if "current_group_title" not in st.session_state:
+        st.session_state.current_group_title = ""
+
+    # Fullscreen image viewer dialog
+    @st.dialog("Image Viewer", width="large")
+    def show_fullscreen_image():
+        if not st.session_state.current_fullscreen_images:
+            st.error("No images to display")
+            return
+        
+        current_index = st.session_state.current_image_index
+        images = st.session_state.current_fullscreen_images
+        
+        # Display current image info
+        st.markdown(f"**{st.session_state.current_group_title}**")
+        st.markdown(f"Image {current_index + 1} of {len(images)}")
+        
+        # Navigation buttons
+        col1, col2, col3, col4, col5 = st.columns([1, 1, 6, 1, 1])
+        
+        with col2:
+            if st.button("◀ Previous", disabled=(current_index == 0)):
+                st.session_state.current_image_index = max(0, current_index - 1)
+                st.rerun()
+        
+        with col4:
+            if st.button("Next ▶", disabled=(current_index == len(images) - 1)):
+                st.session_state.current_image_index = min(len(images) - 1, current_index + 1)
+                st.rerun()
+        
+        # Display the current image
+        current_image_path = images[current_index]
+        if os.path.exists(current_image_path):
+            try:
+                st.image(current_image_path, use_column_width=True)
+            except Exception as e:
+                st.error(f"Error displaying image: {e}")
+        else:
+            st.error(f"Image not found: {os.path.basename(current_image_path)}")
+        
+        # Close button
+        if st.button("Close", type="primary"):
+            st.session_state.fullscreen_mode = False
+            st.rerun()
+
+    # Show fullscreen dialog if in fullscreen mode
+    if st.session_state.fullscreen_mode:
+        show_fullscreen_image()
+
+    def display_screenshot_group(screenshot_group, unique_key_prefix=""):
+        """Helper function to display a screenshot group with clickable thumbnails"""
+        group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
+        image_paths_for_grid = screenshot_group.get("image_paths", [])
+        
+        st.write(f"**{group_title}**")
+        
+        if not image_paths_for_grid:
+            st.write("(No images found for this group)")
+            return
+
+        num_columns = 3
+        cols = st.columns(num_columns)
+        
+        for index, img_path in enumerate(image_paths_for_grid):
+            col_index = index % num_columns
+            with cols[col_index]:
+                if os.path.exists(img_path):
+                    try:
+                        # Create a unique key for each image button
+                        button_key = f"{unique_key_prefix}_img_{index}_{hash(img_path)}"
+                        
+                        # Display thumbnail image with click handler
+                        if st.button("🔍 View Fullscreen", key=f"{button_key}_btn"):
+                            st.session_state.fullscreen_mode = True
+                            st.session_state.current_fullscreen_images = image_paths_for_grid
+                            st.session_state.current_image_index = index
+                            st.session_state.current_group_title = group_title
+                            st.rerun()
+                        
+                        # Show thumbnail
+                        st.image(img_path, width=300)
+                    except Exception as e:
+                        st.error(f"Error displaying image {img_path}: {e}")
+                else:
+                    st.warning(f"Missing: {os.path.basename(img_path)}")
 
     # Display chat messages
-    for message in st.session_state.messages:
+    for msg_index, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
             if isinstance(message["content"], str):
                 st.markdown(message["content"])
@@ -396,29 +493,9 @@ def main():
             # Display screenshots if they exist in this message
             if "screenshots" in message:
                 st.markdown("**Related Screenshots:**")
-                for screenshot_group in message["screenshots"]:
-                    group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
-                    image_paths_for_grid = screenshot_group.get("image_paths", [])
-                    
-                    st.write(f"**{group_title}**")
-                    
-                    if not image_paths_for_grid:
-                        st.write("(No images found for this group)")
-                        continue
-
-                    num_columns = 3
-                    cols = st.columns(num_columns)
-                    
-                    for index, img_path in enumerate(image_paths_for_grid):
-                        col_index = index % num_columns
-                        with cols[col_index]:
-                            if os.path.exists(img_path):
-                                try:
-                                    st.image(img_path, width=800)
-                                except Exception as e:
-                                    st.error(f"Error displaying image {img_path}: {e}")
-                            else:
-                                st.warning(f"Missing: {os.path.basename(img_path)}")
+                for group_index, screenshot_group in enumerate(message["screenshots"]):
+                    unique_key = f"msg_{msg_index}_group_{group_index}"
+                    display_screenshot_group(screenshot_group, unique_key)
 
     if prompt := st.chat_input("Ask about Township features or screens..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -445,29 +522,9 @@ def main():
                 # Display screenshots immediately if they exist
                 if "screenshots" in assistant_message:
                     st.markdown("**Related Screenshots:**")
-                    for screenshot_group in assistant_message["screenshots"]:
-                        group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
-                        image_paths_for_grid = screenshot_group.get("image_paths", [])
-                        
-                        st.write(f"**{group_title}**")
-                        
-                        if not image_paths_for_grid:
-                            st.write("(No images found for this group)")
-                            continue
-
-                        num_columns = 3
-                        cols = st.columns(num_columns)
-                        
-                        for index, img_path in enumerate(image_paths_for_grid):
-                            col_index = index % num_columns
-                            with cols[col_index]:
-                                if os.path.exists(img_path):
-                                    try:
-                                        st.image(img_path, width=800)
-                                    except Exception as e:
-                                        st.error(f"Error displaying image {img_path}: {e}")
-                                else:
-                                    st.warning(f"Missing: {os.path.basename(img_path)}")
+                    for group_index, screenshot_group in enumerate(assistant_message["screenshots"]):
+                        unique_key = f"new_msg_group_{group_index}"
+                        display_screenshot_group(screenshot_group, unique_key)
         else:
             error_message = "OpenAI client not initialized. Please check your API key."
             st.session_state.messages.append({"role": "assistant", "content": error_message})
