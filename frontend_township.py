@@ -400,7 +400,7 @@ def main():
         st.session_state.current_group_title = ""
 
     # Fullscreen image viewer dialog
-    @st.dialog("Image Viewer", width="large")
+    @st.dialog(" ", width="large")  # Empty title to remove "Image Viewer"
     def show_fullscreen_image():
         if not st.session_state.current_fullscreen_images:
             st.error("No images to display")
@@ -413,31 +413,41 @@ def main():
         st.markdown(f"**{st.session_state.current_group_title}**")
         st.markdown(f"Image {current_index + 1} of {len(images)}")
         
-        # Navigation buttons
-        col1, col2, col3, col4, col5 = st.columns([1, 1, 6, 1, 1])
+        # Layout with navigation buttons on sides of the image
+        col1, col2, col3 = st.columns([1, 8, 1])
         
-        with col2:
-            if st.button("◀ Previous", disabled=(current_index == 0)):
+        # Left navigation button
+        with col1:
+            st.write("")  # Add some vertical space
+            st.write("")
+            if st.button("◀", disabled=(current_index == 0), key="prev_btn", 
+                        help="Previous image"):
                 st.session_state.current_image_index = max(0, current_index - 1)
                 st.rerun()
         
-        with col4:
-            if st.button("Next ▶", disabled=(current_index == len(images) - 1)):
+        # Display the current image in the center
+        with col2:
+            current_image_path = images[current_index]
+            if os.path.exists(current_image_path):
+                try:
+                    st.image(current_image_path, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error displaying image: {e}")
+            else:
+                st.error(f"Image not found: {os.path.basename(current_image_path)}")
+        
+        # Right navigation button
+        with col3:
+            st.write("")  # Add some vertical space
+            st.write("")
+            if st.button("▶", disabled=(current_index == len(images) - 1), key="next_btn",
+                        help="Next image"):
                 st.session_state.current_image_index = min(len(images) - 1, current_index + 1)
                 st.rerun()
         
-        # Display the current image
-        current_image_path = images[current_index]
-        if os.path.exists(current_image_path):
-            try:
-                st.image(current_image_path, use_column_width=True)
-            except Exception as e:
-                st.error(f"Error displaying image: {e}")
-        else:
-            st.error(f"Image not found: {os.path.basename(current_image_path)}")
-        
-        # Close button
-        if st.button("Close", type="primary"):
+        # Close button at the bottom
+        st.write("")  # Add some space
+        if st.button("Close", type="primary", use_container_width=True):
             st.session_state.fullscreen_mode = False
             st.rerun()
 
