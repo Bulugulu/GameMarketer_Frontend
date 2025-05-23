@@ -1,0 +1,5 @@
+pg8000>=1.29.0
+python-dotenv>=0.19.0
+yt-dlp
+imagehash
+Pillow 
