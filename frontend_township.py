@@ -385,43 +385,40 @@ def main():
     if "screenshots_to_display" not in st.session_state:
         st.session_state.screenshots_to_display = []
 
+    # Display chat messages
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             if isinstance(message["content"], str):
                 st.markdown(message["content"])
             else:
-                st.markdown(str(message["content"])) 
-    
-    if st.session_state.screenshots_to_display:
-        st.markdown("--- Screenshots ---")
-        for screenshot_group in st.session_state.screenshots_to_display:
-            group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
-            image_paths_for_grid = screenshot_group.get("image_paths", [])
+                st.markdown(str(message["content"]))
             
-            st.write(f"**{group_title}**")
-            
-            if not image_paths_for_grid:
-                st.write("(No images found for this group)")
-                st.markdown("---")
-                continue
+            # Display screenshots if they exist in this message
+            if "screenshots" in message:
+                st.markdown("**Related Screenshots:**")
+                for screenshot_group in message["screenshots"]:
+                    group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
+                    image_paths_for_grid = screenshot_group.get("image_paths", [])
+                    
+                    st.write(f"**{group_title}**")
+                    
+                    if not image_paths_for_grid:
+                        st.write("(No images found for this group)")
+                        continue
 
-            num_columns = 3
-            cols = st.columns(num_columns)
-            
-            for index, img_path in enumerate(image_paths_for_grid):
-                col_index = index % num_columns
-                with cols[col_index]:
-                    if os.path.exists(img_path):
-                        try:
-                            st.image(img_path, width=800)
-                        except Exception as e:
-                            st.error(f"Error displaying image {img_path}: {e}")
-                    else:
-                        st.warning(f"Missing: {os.path.basename(img_path)}")
-            
-            st.markdown("---")
-            
-        st.session_state.screenshots_to_display = []
+                    num_columns = 3
+                    cols = st.columns(num_columns)
+                    
+                    for index, img_path in enumerate(image_paths_for_grid):
+                        col_index = index % num_columns
+                        with cols[col_index]:
+                            if os.path.exists(img_path):
+                                try:
+                                    st.image(img_path, width=800)
+                                except Exception as e:
+                                    st.error(f"Error displaying image {img_path}: {e}")
+                            else:
+                                st.warning(f"Missing: {os.path.basename(img_path)}")
 
     if prompt := st.chat_input("Ask about Township features or screens..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -431,12 +428,46 @@ def main():
         if CLIENT:
             current_conversation_history = [msg for msg in st.session_state.messages[:-1]]
             bot_response_content = get_agent_response(prompt, current_conversation_history)
-            st.session_state.messages.append({"role": "assistant", "content": bot_response_content})
+            
+            # Create the assistant message
+            assistant_message = {"role": "assistant", "content": bot_response_content}
+            
+            # If screenshots were generated, add them to the message
+            if st.session_state.screenshots_to_display:
+                assistant_message["screenshots"] = st.session_state.screenshots_to_display.copy()
+                st.session_state.screenshots_to_display = []  # Clear for next use
+            
+            st.session_state.messages.append(assistant_message)
+            
             with st.chat_message("assistant"): 
                 st.markdown(bot_response_content)
-            
-            if st.session_state.screenshots_to_display: 
-                st.rerun()
+                
+                # Display screenshots immediately if they exist
+                if "screenshots" in assistant_message:
+                    st.markdown("**Related Screenshots:**")
+                    for screenshot_group in assistant_message["screenshots"]:
+                        group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
+                        image_paths_for_grid = screenshot_group.get("image_paths", [])
+                        
+                        st.write(f"**{group_title}**")
+                        
+                        if not image_paths_for_grid:
+                            st.write("(No images found for this group)")
+                            continue
+
+                        num_columns = 3
+                        cols = st.columns(num_columns)
+                        
+                        for index, img_path in enumerate(image_paths_for_grid):
+                            col_index = index % num_columns
+                            with cols[col_index]:
+                                if os.path.exists(img_path):
+                                    try:
+                                        st.image(img_path, width=800)
+                                    except Exception as e:
+                                        st.error(f"Error displaying image {img_path}: {e}")
+                                else:
+                                    st.warning(f"Missing: {os.path.basename(img_path)}")
         else:
             error_message = "OpenAI client not initialized. Please check your API key."
             st.session_state.messages.append({"role": "assistant", "content": error_message})
