@@ -14,7 +14,7 @@ CREATE TABLE taxonomy (
     taxon_id    SERIAL      PRIMARY KEY,
     parent_id   INT         REFERENCES taxonomy(taxon_id),
     level       TEXT        NOT NULL
-                 CHECK (level IN ('category','feature','subfeature')),
+                 CHECK (level IN ('domain','category')),
     name        TEXT        NOT NULL UNIQUE,
     description TEXT
 );

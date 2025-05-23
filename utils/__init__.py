@@ -5,6 +5,7 @@ from .config import get_client, get_api_key
 from .agent_config import get_agent_response
 from .ui_components import display_screenshot_group, show_fullscreen_image, initialize_session_state
 from .screenshot_handler import retrieve_screenshots_for_display
+from .agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool
 
 __all__ = [
     'get_client',
@@ -13,5 +14,7 @@ __all__ = [
     'display_screenshot_group',
     'show_fullscreen_image',
     'initialize_session_state',
-    'retrieve_screenshots_for_display'
+    'retrieve_screenshots_for_display',
+    'run_sql_query_tool',
+    'retrieve_screenshots_for_display_tool'
 ] 
