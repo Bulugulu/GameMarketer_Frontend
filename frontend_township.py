@@ -7,6 +7,11 @@ from typing import List, Dict, Any
 import json
 import os.path
 import uuid
+import asyncio
+import threading
+
+# Import the Agents SDK
+from agents import Agent, Runner, function_tool
 
 # Load environment variables from .env.local
 load_dotenv(".env.local")
@@ -14,7 +19,7 @@ load_dotenv(".env.local")
 # Initialize OpenAI client
 API_KEY = os.environ.get("OPENAI_API_KEY")
 CLIENT = None
-MODEL_NAME = "gpt-4.1" # Or gpt-4-turbo, ensure it's a model that supports tool calling well
+MODEL_NAME = "gpt-4o"  # Use a model that works well with Agents SDK
 
 # Global variable for the database connection parameters
 DB_CONNECTION_PARAMS = {
@@ -30,65 +35,186 @@ if API_KEY:
 else:
     st.error("OPENAI_API_KEY not found. Please set it in .env.local or as an environment variable.")
 
-# Tool definition for the LLM
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "retrieve_screenshots_for_display",
-            "description": "After identifying relevant screenshots (e.g., using SQL queries via run_sql_query), use this tool to retrieve and prepare screenshot data for those screenshots to be shown to the user. You must provide specific screenshot IDs obtained from the SQL query results.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "screenshot_ids": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "A list of exact screenshot UUIDs for which to retrieve screenshots. These IDs should primarily come from the results of a previous `run_sql_query` tool call."
-                    },
-                    "feature_keywords": {
-                        "type": "array",
-                        "items": {
-                            "type": "string"
-                        },
-                        "description": "Optional. Specific feature keywords to ensure relevance if screenshot IDs are ambiguous, though IDs from SQL should be fairly specific."
-                    }
-                },
-                "required": ["screenshot_ids"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_sql_query",
-            "description": "Runs a SQL SELECT query against the Township PostgreSQL database and returns the results. Use this to fetch specific data points when the user's query implies direct database access is needed. Provide the complete SQL query as a string. You can query tables like 'screenshots', 'screens', 'features_game', etc. according to the Township database schema.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The SQL SELECT query to execute. Example: \"SELECT screen_name, description FROM screens WHERE game_id = (SELECT game_id FROM games WHERE name = 'Township');\""
-                    }
-                },
-                "required": ["query"]
-            }
-        }
-    }
-]
+# Import the database tool
+from database_tool import run_sql_query
 
-def get_chatgpt_response(prompt_text, conversation_history):
-    if not CLIENT:
-        return "Error: OpenAI client not initialized. API key may be missing."
+# Define tools using the Agents SDK function_tool decorator
+@function_tool
+def run_sql_query_tool(query: str) -> Dict[str, Any]:
+    """
+    Runs a SQL SELECT query against the Township PostgreSQL database and returns the results.
+    Use this to fetch specific data points when the user's query implies direct database access is needed.
+    Provide the complete SQL query as a string. You can query tables like 'screenshots', 'screens', 
+    'features_game', etc. according to the Township database schema.
+    
+    Args:
+        query: The SQL SELECT query to execute
+        
+    Returns:
+        Dictionary containing query results with 'columns' and 'rows' keys, or 'error' if failed
+    """
+    try:
+        result = run_sql_query(query)
+        print(f"[DEBUG LOG] SQL query executed: {query}")
+        
+        if "error" in result:
+            print(f"[DEBUG LOG] SQL query failed. Error: {result['error']}")
+            return result
+        else:
+            row_count = len(result.get("rows", []))
+            print(f"[DEBUG LOG] SQL query successful. Returned {row_count} rows.")
+            
+            # Fix UUID serialization issues - convert UUID objects to strings
+            if "rows" in result:
+                for i, row in enumerate(result["rows"]):
+                    result["rows"][i] = [str(cell) if isinstance(cell, uuid.UUID) else cell for cell in row]
+            
+            return result
+            
+    except Exception as e:
+        error_result = {"error": f"Exception in SQL query execution: {str(e)}"}
+        print(f"[DEBUG LOG] Exception in SQL query: {str(e)}")
+        return error_result
 
-    messages = [
-        {
-  "role": "system",
-  "content": 
-"""
-    You are an expert data-analyst and SQL assistant for the mobile game Township.
-Your job is to find implementation examples (screenshots) for specific features that the user is interested  in.
+@function_tool
+def retrieve_screenshots_for_display_tool(screenshot_ids: List[str], feature_keywords: List[str] = None) -> Dict[str, Any]:
+    """
+    After identifying relevant screenshots (e.g., using SQL queries), use this tool to retrieve and 
+    prepare screenshot data for those screenshots to be shown to the user. You must provide specific 
+    screenshot IDs obtained from the SQL query results.
+    
+    Args:
+        screenshot_ids: A list of exact screenshot UUIDs for which to retrieve screenshots
+        feature_keywords: Optional specific feature keywords to ensure relevance
+        
+    Returns:
+        Dictionary containing screenshots for UI display and metadata
+    """
+    print(f"[TOOL CALL] retrieve_screenshots_for_display called by agent.")
+    if screenshot_ids: 
+        print(f"  Screenshot IDs: {screenshot_ids}")
+    if feature_keywords: 
+        print(f"  Feature Keywords: {feature_keywords}")
+    
+    result = retrieve_screenshots_for_display(screenshot_ids, feature_keywords)
+    
+    # Store screenshots for UI display
+    if "screenshots_for_ui" in result:
+        st.session_state.screenshots_to_display = result["screenshots_for_ui"]
+    
+    return result
+
+def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords: List[str] = None) -> Dict[str, Any]:
+    """
+    Retrieves and prepares screenshots for display based on screenshot_ids.
+    This function is called by the agent via the tool.
+    """
+    # Get screenshot paths from database
+    query = f"""
+    SELECT screenshot_id::text, path, caption, screen_id::text, modal, modal_name, elements, 
+           (SELECT screen_name FROM screens WHERE screens.screen_id = screenshots.screen_id) as screen_name
+    FROM screenshots 
+    WHERE screenshot_id IN ('{"','".join(screenshot_ids)}')
+    """
+    
+    try:
+        result = run_sql_query(query)
+        if "error" in result:
+            return {
+                "message_for_agent": f"Error retrieving screenshots: {result['error']}",
+                "screenshots_for_ui": [],
+                "retrieved_entries_info": []
+            }
+        
+        if not result.get("rows"):
+            return {
+                "message_for_agent": "No screenshots found with the provided IDs.",
+                "screenshots_for_ui": [],
+                "retrieved_entries_info": []
+            }
+        
+        # Process screenshots
+        columns = result["columns"]
+        rows = result["rows"]
+        
+        # Group screenshots by screen_name
+        screenshot_groups = {}
+        for row in rows:
+            row_dict = dict(zip(columns, row))
+            screen_name = row_dict.get("screen_name") or "Unknown Screen"
+            
+            if screen_name not in screenshot_groups:
+                screenshot_groups[screen_name] = []
+            
+            # Get the path
+            screenshot_path = row_dict.get("path", "")
+            valid_path = screenshot_path
+            
+            # Check if path exists, if not try alternative extension
+            if screenshot_path and not os.path.exists(screenshot_path):
+                if screenshot_path.lower().endswith('.jpg'):
+                    alternative_path = screenshot_path[:-4] + '.png'
+                    if os.path.exists(alternative_path):
+                        valid_path = alternative_path
+                        print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
+                elif screenshot_path.lower().endswith('.png'):
+                    alternative_path = screenshot_path[:-4] + '.jpg'
+                    if os.path.exists(alternative_path):
+                        valid_path = alternative_path
+                        print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
+            
+            # If valid path exists, add to the group
+            if valid_path and os.path.exists(valid_path):
+                screenshot_groups[screen_name].append({
+                    "path": valid_path,
+                    "caption": row_dict.get("caption", ""),
+                    "screenshot_id": row_dict.get("screenshot_id", ""),
+                    "elements": row_dict.get("elements", {})
+                })
+        
+        # Prepare screenshots for UI
+        screenshots_for_ui = []
+        retrieved_entries_info = []
+        
+        for screen_name, screenshots in screenshot_groups.items():
+            if not screenshots:
+                continue
+                
+            image_paths = [s["path"] for s in screenshots]
+            
+            screenshots_for_ui.append({
+                "group_title": screen_name,
+                "image_paths": image_paths
+            })
+            
+            # Prepare info for agent
+            retrieved_entries_info.append({
+                "screen_name": screen_name,
+                "screenshot_count": len(screenshots),
+                "captions": [s["caption"] for s in screenshots if s.get("caption")],
+                "elements": [s["elements"] for s in screenshots if s.get("elements")]
+            })
+        
+        return {
+            "message_for_agent": f"Retrieved {len(rows)} screenshots for display across {len(screenshot_groups)} screens.",
+            "screenshots_for_ui": screenshots_for_ui,
+            "retrieved_entries_info": retrieved_entries_info
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Exception in retrieve_screenshots_for_display: {e}")
+        return {
+            "message_for_agent": f"Error retrieving screenshots: {str(e)}",
+            "screenshots_for_ui": [],
+            "retrieved_entries_info": []
+        }
+
+# Define the SQL Analysis Agent
+sql_analysis_agent = Agent(
+    name="SQL Analysis Agent",
+    instructions="""
+You are an expert data-analyst and SQL assistant for the mobile game Township.
+Your job is to find implementation examples (screenshots) for specific features that the user is interested in.
 
 DATABASE REFERENCE
 
@@ -163,7 +289,7 @@ Follow these steps in order for each user question:
    WHERE  s.screenshot_id = ANY(:candidate_shots)
    ORDER  BY s.capture_time
    LIMIT  50;
-   - Ask if user wants to see images, then call retrieve_screenshots_for_display with the UUIDs.
+   - If you find relevant screenshots, call retrieve_screenshots_for_display_tool with the UUIDs.
 
 8. **Only if no rows yet:** Do a controlled free-text scan on caption and elements (with LIMIT 50).
 
@@ -184,214 +310,75 @@ Follow these steps in order for each user question:
 - **Performance:** avoid SELECT *; list only required columns.
 - **Explain concepts:** answer conceptual questions directly when possible, without querying the DB.
 - **Be truthful:** If the info isn't in the DB, say you don't have it.
-- When you decide to use a tool, state exactly which tool and parameters you will use, then execute the call.
-- If you don't know the answer, respond: "I'm not sure – let's try another angle.
-"""
-}
-    ]
-    messages.extend(conversation_history)
-    messages.append({"role": "user", "content": prompt_text})
+- When you find relevant screenshots, always call retrieve_screenshots_for_display_tool to show them to the user.
+- Work step by step through the query strategy, and be willing to try multiple approaches if the first doesn't work.
+""",
+    tools=[run_sql_query_tool, retrieve_screenshots_for_display_tool]
+)
 
+def get_agent_response(prompt_text, conversation_history):
+    """
+    Get response from the SQL Analysis Agent using the Agents SDK
+    """
+    if not CLIENT:
+        return "Error: OpenAI client not initialized. API key may be missing."
+    
     try:
-        response = CLIENT.chat.completions.create(
-            model=MODEL_NAME,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            max_tokens=5024,
-            temperature=0.7,
-        )
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
-
-        if tool_calls:
-            messages.append(response_message)
-            available_functions = {
-                "retrieve_screenshots_for_display": retrieve_screenshots_for_display,
-                "run_sql_query": run_sql_query
-            }
-            for tool_call in tool_calls:
-                function_name = tool_call.function.name
-                function_to_call = available_functions.get(function_name)
-                if function_to_call:
-                    function_args_str = tool_call.function.arguments
-                    try:
-                        function_args = json.loads(function_args_str)
-                        
-                        kwargs_for_function = {}
-                        if function_name == "retrieve_screenshots_for_display":
-                            kwargs_for_function["screenshot_ids"] = function_args.get("screenshot_ids", [])
-                            kwargs_for_function["feature_keywords"] = function_args.get("feature_keywords")
-                        elif function_name == "run_sql_query":
-                            kwargs_for_function["query"] = function_args.get("query")
-                            print(f"[DEBUG LOG] Attempting to run SQL query from LLM: {kwargs_for_function['query']}") # Log the query
-                        
-                        tool_function_response_data = function_to_call(**kwargs_for_function)
-
-                        # Log result of run_sql_query
-                        if function_name == "run_sql_query":
-                            if "error" in tool_function_response_data:
-                                print(f"[DEBUG LOG] SQL query failed. Error: {tool_function_response_data['error']}")
-                            else:
-                                row_count = len(tool_function_response_data.get("rows", []))
-                                print(f"[DEBUG LOG] SQL query successful. Returned {row_count} rows. Columns: {tool_function_response_data.get('columns')}")
-                                
-                                # Fix UUID serialization issues - convert UUID objects to strings
-                                if "rows" in tool_function_response_data:
-                                    for i, row in enumerate(tool_function_response_data["rows"]):
-                                        tool_function_response_data["rows"][i] = [str(cell) if isinstance(cell, uuid.UUID) else cell for cell in row]
-
-                        if function_name == "retrieve_screenshots_for_display":
-                            st.session_state.screenshots_to_display = tool_function_response_data.get("screenshots_for_ui", [])
-                            llm_tool_response_content = json.dumps({
-                                "message": tool_function_response_data.get("message_for_llm"),
-                                "retrieved_screenshot_details": tool_function_response_data.get("retrieved_entries_info")
-                            })
-                        else: # For run_sql_query or other future tools
-                            llm_tool_response_content = json.dumps(tool_function_response_data)
-
-                        if len(llm_tool_response_content) > 4000:
-                            llm_tool_response_content = json.dumps({"message": "Tool response too long, content truncated."})
-
-                        messages.append({
-                            "tool_call_id": tool_call.id,
-                            "role": "tool",
-                            "name": function_name,
-                            "content": llm_tool_response_content,
-                        })
-                    except json.JSONDecodeError:
-                        st.error(f"Error decoding JSON arguments from LLM: {function_args_str}")
-                        messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": json.dumps({"error": "Invalid arguments format from LLM."})})
-                        continue
-                    except Exception as e:
-                        st.error(f"Error executing tool {function_name}: {e}")
-                        messages.append({"tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": json.dumps({"error": str(e)})})
-                        continue
-            
-            second_response = CLIENT.chat.completions.create(model=MODEL_NAME, messages=messages)
-            return second_response.choices[0].message.content
+        # Convert conversation history to a format suitable for agents
+        full_input = ""
+        
+        # Add conversation history if available
+        if conversation_history:
+            history_context = "Previous conversation:\n"
+            for msg in conversation_history:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
+                if role and content:
+                    history_context += f"{role}: {content}\n"
+            history_context += f"\nCurrent question: {prompt_text}"
+            full_input = history_context
         else:
-            return response_message.content
-    except Exception as e:
-        if "Unrecognized request argument supplied: tools" in str(e):
-            st.error(f"Error calling OpenAI API: {e}. Your current model '{MODEL_NAME}' might not support tools. Try 'gpt-4o', 'gpt-4-turbo', or 'gpt-3.5-turbo-0125'.")
-            return "Sorry, API error related to tool usage. Model might need an update."
-        st.error(f"Error calling OpenAI API: {e}")
-        return "Sorry, I encountered an error."
-
-from database_tool import run_sql_query
-
-def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords: List[str] = None) -> Dict[str, Any]:
-    """
-    Retrieves and prepares screenshots for display based on screenshot_ids.
-    This function is called by the LLM via tool calling.
-    """
-    print(f"[TOOL CALL] retrieve_screenshots_for_display called by LLM.")
-    if screenshot_ids: print(f"  Screenshot IDs: {screenshot_ids}")
-    if feature_keywords: print(f"  Feature Keywords: {feature_keywords}")
-    
-    # Get screenshot paths from database
-    query = f"""
-    SELECT screenshot_id::text, path, caption, screen_id::text, modal, modal_name, elements, 
-           (SELECT screen_name FROM screens WHERE screens.screen_id = screenshots.screen_id) as screen_name
-    FROM screenshots 
-    WHERE screenshot_id IN ('{"','".join(screenshot_ids)}')
-    """
-    
-    try:
-        result = run_sql_query(query)
-        if "error" in result:
-            return {
-                "message_for_llm": f"Error retrieving screenshots: {result['error']}",
-                "screenshots_for_ui": [],
-                "retrieved_entries_info": []
-            }
+            full_input = prompt_text
         
-        if not result.get("rows"):
-            return {
-                "message_for_llm": "No screenshots found with the provided IDs.",
-                "screenshots_for_ui": [],
-                "retrieved_entries_info": []
-            }
+        # Define an async function to run the agent
+        async def run_agent_async():
+            result = await Runner.run(sql_analysis_agent, full_input)
+            return result.final_output
         
-        # Process screenshots
-        columns = result["columns"]
-        rows = result["rows"]
-        
-        # Group screenshots by screen_name
-        screenshot_groups = {}
-        for row in rows:
-            row_dict = dict(zip(columns, row))
-            screen_name = row_dict.get("screen_name") or "Unknown Screen"
-            
-            if screen_name not in screenshot_groups:
-                screenshot_groups[screen_name] = []
-            
-            # Get the path
-            screenshot_path = row_dict.get("path", "")
-            valid_path = screenshot_path
-            
-            # Check if path exists, if not try alternative extension
-            if screenshot_path and not os.path.exists(screenshot_path):
-                if screenshot_path.lower().endswith('.jpg'):
-                    alternative_path = screenshot_path[:-4] + '.png'
-                    if os.path.exists(alternative_path):
-                        valid_path = alternative_path
-                        print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
-                elif screenshot_path.lower().endswith('.png'):
-                    alternative_path = screenshot_path[:-4] + '.jpg'
-                    if os.path.exists(alternative_path):
-                        valid_path = alternative_path
-                        print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
-            
-            # If valid path exists, add to the group
-            if valid_path and os.path.exists(valid_path):
-                screenshot_groups[screen_name].append({
-                    "path": valid_path,
-                    "caption": row_dict.get("caption", ""),
-                    "screenshot_id": row_dict.get("screenshot_id", ""),
-                    "elements": row_dict.get("elements", {})
-                })
-        
-        # Prepare screenshots for UI
-        screenshots_for_ui = []
-        retrieved_entries_info = []
-        
-        for screen_name, screenshots in screenshot_groups.items():
-            if not screenshots:
-                continue
+        # Run the async function in a new event loop
+        try:
+            # Use asyncio.run() to create a new event loop and run the agent
+            return asyncio.run(run_agent_async())
+        except RuntimeError as e:
+            if "cannot be called from a running event loop" in str(e):
+                # If we're in a running event loop, use a thread
+                result = None
+                exception = None
                 
-            image_paths = [s["path"] for s in screenshots]
-            
-            screenshots_for_ui.append({
-                "group_title": screen_name,
-                "image_paths": image_paths
-            })
-            
-            # Prepare info for LLM
-            retrieved_entries_info.append({
-                "screen_name": screen_name,
-                "screenshot_count": len(screenshots),
-                "captions": [s["caption"] for s in screenshots if s.get("caption")],
-                "elements": [s["elements"] for s in screenshots if s.get("elements")]
-            })
-        
-        return {
-            "message_for_llm": f"Retrieved {len(rows)} screenshots for display across {len(screenshot_groups)} screens.",
-            "screenshots_for_ui": screenshots_for_ui,
-            "retrieved_entries_info": retrieved_entries_info
-        }
+                def run_in_thread():
+                    nonlocal result, exception
+                    try:
+                        result = asyncio.run(run_agent_async())
+                    except Exception as e:
+                        exception = e
+                
+                thread = threading.Thread(target=run_in_thread)
+                thread.start()
+                thread.join()
+                
+                if exception:
+                    raise exception
+                
+                return result
+            else:
+                raise e
         
     except Exception as e:
-        print(f"[ERROR] Exception in retrieve_screenshots_for_display: {e}")
-        return {
-            "message_for_llm": f"Error retrieving screenshots: {str(e)}",
-            "screenshots_for_ui": [],
-            "retrieved_entries_info": []
-        }
+        st.error(f"Error calling Agents SDK: {e}")
+        return "Sorry, I encountered an error while processing your request."
 
 def main():
-    st.title("Township Feature Analyst Chatbot")
+    st.title("Township Feature Analyst Chatbot (Agentic)")
 
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -426,9 +413,9 @@ def main():
                 with cols[col_index]:
                     if os.path.exists(img_path):
                         try:
-                            st.image(img_path, width=800) # Increased from 300 to 600 for higher quality
+                            st.image(img_path, width=800)
                         except Exception as e:
-                            st.error(f"Error displaying image {img_path}: {e}") # More specific error
+                            st.error(f"Error displaying image {img_path}: {e}")
                     else:
                         st.warning(f"Missing: {os.path.basename(img_path)}")
             
@@ -438,20 +425,23 @@ def main():
 
     if prompt := st.chat_input("Ask about Township features or screens..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"): st.markdown(prompt)
+        with st.chat_message("user"): 
+            st.markdown(prompt)
 
         if CLIENT:
             current_conversation_history = [msg for msg in st.session_state.messages[:-1]]
-            bot_response_content = get_chatgpt_response(prompt, current_conversation_history)
+            bot_response_content = get_agent_response(prompt, current_conversation_history)
             st.session_state.messages.append({"role": "assistant", "content": bot_response_content})
-            with st.chat_message("assistant"): st.markdown(bot_response_content)
+            with st.chat_message("assistant"): 
+                st.markdown(bot_response_content)
             
             if st.session_state.screenshots_to_display: 
                 st.rerun()
         else:
             error_message = "OpenAI client not initialized. Please check your API key."
             st.session_state.messages.append({"role": "assistant", "content": error_message})
-            with st.chat_message("assistant"): st.markdown(error_message)
+            with st.chat_message("assistant"): 
+                st.markdown(error_message)
 
 if __name__ == "__main__":
     main() 
