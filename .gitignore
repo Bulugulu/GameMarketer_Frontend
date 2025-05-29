@@ -159,4 +159,16 @@ logs/
 *.tar.gz
 *.tar.bz2
 *.rar
-*.7z 
+*.7z
+
+# JSON annotation files
+*.json
+
+# Screenshots folder contents
+screenshots/
+screenshots/**/*
+
+# Exclude specific config JSONs that should be tracked (uncomment if needed)
+# !config.json
+# !package.json
+# !tsconfig.json 

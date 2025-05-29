@@ -62,7 +62,7 @@ Cross-reference tables:
 Column details:
 • elements in screenshots is an array of objects {name, description, type} stored as JSONB.
 • screenshot_id and game_id are UUIDs. Cast with ::text as needed for string operations.
-• path is a relative URI such as "screenshots/abc.jpg".
+• path is a relative URI such as "uploads/folder-id/filename.png" (relative to screenshots directory).
 • embedding is a VECTOR(768) for similarity search.
 • confidence values are REAL between 0 and 1.
 • taxonomy.level is ENUM with values 'domain' and 'category' only.

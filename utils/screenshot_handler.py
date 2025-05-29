@@ -8,6 +8,10 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     """
     Retrieves and prepares screenshots for display based on screenshot_ids.
     This function is called by the agent via the tool.
+    
+    The function handles path resolution by combining the database's relative paths 
+    (e.g., "uploads/folder/file.png") with the base "screenshots" directory to create 
+    full paths (e.g., "screenshots/uploads/folder/file.png").
     """
     # Get screenshot paths from database
     query = f"""
@@ -46,21 +50,30 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
             if screen_name not in screenshot_groups:
                 screenshot_groups[screen_name] = []
             
-            # Get the path
+            # Get the path from database (relative path)
             screenshot_path = row_dict.get("path", "")
-            valid_path = screenshot_path
+            
+            # Construct full path by joining with base screenshots directory
+            if screenshot_path:
+                full_screenshot_path = os.path.join("screenshots", screenshot_path)
+            else:
+                full_screenshot_path = ""
+            
+            valid_path = full_screenshot_path
             
             # Check if path exists, if not try alternative extension
-            if screenshot_path and not os.path.exists(screenshot_path):
+            if full_screenshot_path and not os.path.exists(full_screenshot_path):
                 if screenshot_path.lower().endswith('.jpg'):
-                    alternative_path = screenshot_path[:-4] + '.png'
-                    if os.path.exists(alternative_path):
-                        valid_path = alternative_path
+                    alternative_relative_path = screenshot_path[:-4] + '.png'
+                    alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                    if os.path.exists(alternative_full_path):
+                        valid_path = alternative_full_path
                         print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
                 elif screenshot_path.lower().endswith('.png'):
-                    alternative_path = screenshot_path[:-4] + '.jpg'
-                    if os.path.exists(alternative_path):
-                        valid_path = alternative_path
+                    alternative_relative_path = screenshot_path[:-4] + '.jpg'
+                    alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                    if os.path.exists(alternative_full_path):
+                        valid_path = alternative_full_path
                         print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
             
             # If valid path exists, add to the group
