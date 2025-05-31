@@ -20,20 +20,21 @@ def main():
     # Display chat messages
     for msg_index, message in enumerate(st.session_state.messages):
         with st.chat_message(message["role"]):
+            # Display screenshots first if they exist in this message
+            if "screenshots" in message:
+                st.markdown("**Related Screenshots (by Feature):**")
+                for group_index, screenshot_group in enumerate(message["screenshots"]):
+                    unique_key = f"msg_{msg_index}_group_{group_index}"
+                    display_screenshot_group(screenshot_group, unique_key)
+            
+            # Then display the text content
             if isinstance(message["content"], str):
                 st.markdown(message["content"])
             else:
                 st.markdown(str(message["content"]))
-            
-            # Display screenshots if they exist in this message
-            if "screenshots" in message:
-                st.markdown("**Related Screenshots:**")
-                for group_index, screenshot_group in enumerate(message["screenshots"]):
-                    unique_key = f"msg_{msg_index}_group_{group_index}"
-                    display_screenshot_group(screenshot_group, unique_key)
 
     # Handle new user input
-    if prompt := st.chat_input("Ask about Township features or screens..."):
+    if prompt := st.chat_input("Ask about Township features..."):
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"): 
             st.markdown(prompt)
@@ -54,14 +55,15 @@ def main():
             st.session_state.messages.append(assistant_message)
             
             with st.chat_message("assistant"): 
-                st.markdown(bot_response_content)
-                
                 # Display screenshots immediately if they exist
                 if "screenshots" in assistant_message:
-                    st.markdown("**Related Screenshots:**")
+                    st.markdown("**Related Screenshots (by Feature):**")
                     for group_index, screenshot_group in enumerate(assistant_message["screenshots"]):
                         unique_key = f"new_msg_group_{group_index}"
                         display_screenshot_group(screenshot_group, unique_key)
+                
+                # Then display the text response
+                st.markdown(bot_response_content)
         else:
             error_message = "OpenAI client not initialized. Please check your API key."
             st.session_state.messages.append({"role": "assistant", "content": error_message})

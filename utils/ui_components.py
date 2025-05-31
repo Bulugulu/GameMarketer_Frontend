@@ -5,6 +5,7 @@ def display_screenshot_group(screenshot_group, unique_key_prefix=""):
     """Helper function to display a screenshot group with clickable thumbnails"""
     group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
     image_paths_for_grid = screenshot_group.get("image_paths", [])
+    group_type = screenshot_group.get("group_type", "screen")  # New field to identify feature groups
     
     st.write(f"**{group_title}**")
     
@@ -12,6 +13,17 @@ def display_screenshot_group(screenshot_group, unique_key_prefix=""):
         st.write("(No images found for this group)")
         return
 
+    # For feature groups, show single fullscreen button at the top
+    if group_type == "feature" and image_paths_for_grid:
+        button_key = f"{unique_key_prefix}_feature_fullscreen_{hash(group_title)}"
+        if st.button("🔍 View Feature Screenshots", key=f"{button_key}_btn"):
+            st.session_state.fullscreen_mode = True
+            st.session_state.current_fullscreen_images = image_paths_for_grid
+            st.session_state.current_image_index = 0
+            st.session_state.current_group_title = group_title
+            st.rerun()
+    
+    # Display screenshots in grid
     num_columns = 3
     cols = st.columns(num_columns)
     
@@ -20,16 +32,18 @@ def display_screenshot_group(screenshot_group, unique_key_prefix=""):
         with cols[col_index]:
             if os.path.exists(img_path):
                 try:
-                    # Create a unique key for each image button
-                    button_key = f"{unique_key_prefix}_img_{index}_{hash(img_path)}"
-                    
-                    # Display thumbnail image with click handler
-                    if st.button("🔍 View Fullscreen", key=f"{button_key}_btn"):
-                        st.session_state.fullscreen_mode = True
-                        st.session_state.current_fullscreen_images = image_paths_for_grid
-                        st.session_state.current_image_index = index
-                        st.session_state.current_group_title = group_title
-                        st.rerun()
+                    # For legacy/screen groups, still show individual buttons
+                    if group_type != "feature":
+                        # Create a unique key for each image button
+                        button_key = f"{unique_key_prefix}_img_{index}_{hash(img_path)}"
+                        
+                        # Display thumbnail image with click handler
+                        if st.button("🔍 View Fullscreen", key=f"{button_key}_btn"):
+                            st.session_state.fullscreen_mode = True
+                            st.session_state.current_fullscreen_images = image_paths_for_grid
+                            st.session_state.current_image_index = index
+                            st.session_state.current_group_title = group_title
+                            st.rerun()
                     
                     # Show thumbnail
                     st.image(img_path, width=300)

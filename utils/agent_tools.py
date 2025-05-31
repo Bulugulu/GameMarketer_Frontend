@@ -81,7 +81,10 @@ def retrieve_screenshots_for_display_tool(screenshot_ids: List[str], feature_key
 def semantic_search_tool(
     query: str, 
     content_type: Literal["features", "screenshots", "both"] = "both",
-    limit: int = 10
+    limit: int = 10,
+    game_id: Optional[str] = None,
+    feature_ids: Optional[List[str]] = None,
+    screenshot_ids: Optional[List[str]] = None
 ) -> Dict[str, Any]:
     """
     Performs semantic search across game features and/or screenshots using vector embeddings.
@@ -93,6 +96,9 @@ def semantic_search_tool(
         query: The search query to find semantically similar content
         content_type: What to search for - "features", "screenshots", or "both"  
         limit: Maximum number of results to return for each content type (default: 10)
+        game_id: Optional filter by specific game ID
+        feature_ids: Optional list of specific feature IDs to search within (only for features/both)
+        screenshot_ids: Optional list of specific screenshot IDs to search within (only for screenshots/both)
         
     Returns:
         Dictionary containing search results with high-level metadata:
@@ -106,7 +112,16 @@ def semantic_search_tool(
                 "error": "ChromaDB vector search interface not available. Please ensure ChromaDB is properly set up."
             }
         
-        print(f"[DEBUG LOG] Semantic search executed: '{query}' | Type: {content_type} | Limit: {limit}")
+        filter_info = []
+        if game_id:
+            filter_info.append(f"game_id: {game_id}")
+        if feature_ids:
+            filter_info.append(f"feature_ids: {len(feature_ids)} IDs")
+        if screenshot_ids:
+            filter_info.append(f"screenshot_ids: {len(screenshot_ids)} IDs")
+        
+        filter_str = f" | Filters: {', '.join(filter_info)}" if filter_info else ""
+        print(f"[DEBUG LOG] Semantic search executed: '{query}' | Type: {content_type} | Limit: {limit}{filter_str}")
         
         # Initialize the search interface
         search_interface = GameDataSearchInterface()
@@ -117,8 +132,18 @@ def semantic_search_tool(
             "limit": limit
         }
         
+        # Add filter information to result
+        if game_id:
+            result["game_id"] = game_id
+        if feature_ids:
+            result["feature_ids_filter"] = feature_ids
+        if screenshot_ids:
+            result["screenshot_ids_filter"] = screenshot_ids
+        
         if content_type == "features":
-            features = search_interface.search_game_features(query, limit=limit)
+            features = search_interface.search_game_features(
+                query, limit=limit, game_id=game_id, feature_ids=feature_ids
+            )
             result["features"] = [
                 {
                     "feature_id": f["feature_id"],
@@ -131,7 +156,9 @@ def semantic_search_tool(
             print(f"[DEBUG LOG] Found {len(result['features'])} similar features")
             
         elif content_type == "screenshots":
-            screenshots = search_interface.search_game_screenshots(query, limit=limit)
+            screenshots = search_interface.search_game_screenshots(
+                query, limit=limit, game_id=game_id, screenshot_ids=screenshot_ids
+            )
             result["screenshots"] = [
                 {
                     "screenshot_id": s["screenshot_id"],
@@ -144,7 +171,10 @@ def semantic_search_tool(
             print(f"[DEBUG LOG] Found {len(result['screenshots'])} similar screenshots")
             
         else:  # both
-            all_results = search_interface.search_all_game_content(query, limit=limit)
+            all_results = search_interface.search_all_game_content(
+                query, limit=limit, game_id=game_id, 
+                feature_ids=feature_ids, screenshot_ids=screenshot_ids
+            )
             result["features"] = [
                 {
                     "feature_id": f["feature_id"],

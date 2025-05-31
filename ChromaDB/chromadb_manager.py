@@ -171,16 +171,30 @@ class ChromaDBManager:
         
         return len(ids)
     
-    def search_features(self, query, n_results=5, game_id=None):
+    def search_features(self, query, n_results=5, game_id=None, feature_ids=None):
         """Search for similar features"""
         collection = self.client.get_collection(
             "game_features", 
             embedding_function=self.embedding_function
         )
         
-        where_clause = None
+        # Build where clause for filtering
+        where_conditions = []
+        
         if game_id:
-            where_clause = {"game_id": game_id}
+            where_conditions.append({"game_id": game_id})
+        
+        if feature_ids:
+            # Convert feature_ids to strings if they aren't already
+            str_feature_ids = [str(fid) for fid in feature_ids]
+            where_conditions.append({"feature_id": {"$in": str_feature_ids}})
+        
+        # Combine conditions with $and if multiple exist
+        where_clause = None
+        if len(where_conditions) == 1:
+            where_clause = where_conditions[0]
+        elif len(where_conditions) > 1:
+            where_clause = {"$and": where_conditions}
         
         results = collection.query(
             query_texts=[query],
@@ -199,16 +213,30 @@ class ChromaDBManager:
         
         return formatted_results
     
-    def search_screenshots(self, query, n_results=5, game_id=None):
+    def search_screenshots(self, query, n_results=5, game_id=None, screenshot_ids=None):
         """Search for similar screenshots"""
         collection = self.client.get_collection(
             "game_screenshots", 
             embedding_function=self.embedding_function
         )
         
-        where_clause = None
+        # Build where clause for filtering
+        where_conditions = []
+        
         if game_id:
-            where_clause = {"game_id": game_id}
+            where_conditions.append({"game_id": game_id})
+        
+        if screenshot_ids:
+            # Convert screenshot_ids to strings if they aren't already
+            str_screenshot_ids = [str(sid) for sid in screenshot_ids]
+            where_conditions.append({"screenshot_id": {"$in": str_screenshot_ids}})
+        
+        # Combine conditions with $and if multiple exist
+        where_clause = None
+        if len(where_conditions) == 1:
+            where_clause = where_conditions[0]
+        elif len(where_conditions) > 1:
+            where_clause = {"$and": where_conditions}
         
         results = collection.query(
             query_texts=[query],

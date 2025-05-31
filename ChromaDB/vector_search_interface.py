@@ -10,8 +10,9 @@ class GameDataSearchInterface:
             use_openai_embeddings=True
         )
         
-    def search_game_features(self, query: str, limit: int = 5, 
-                           game_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search_game_features(self, query: str, limit: int = 10, 
+                           game_id: Optional[str] = None,
+                           feature_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Search for game features relevant to query
         
@@ -19,11 +20,12 @@ class GameDataSearchInterface:
             query: Natural language search query
             limit: Maximum number of results
             game_id: Optional filter by specific game
+            feature_ids: Optional list of specific feature IDs to search within
             
         Returns:
             List of matching features with metadata, sorted by distance (ascending)
         """
-        results = self.vector_db.search_features(query, limit, game_id)
+        results = self.vector_db.search_features(query, limit, game_id, feature_ids)
         
         formatted_results = []
         for result in results:
@@ -40,8 +42,9 @@ class GameDataSearchInterface:
         
         return formatted_results
     
-    def search_game_screenshots(self, query: str, limit: int = 5, 
-                              game_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search_game_screenshots(self, query: str, limit: int = 10, 
+                              game_id: Optional[str] = None,
+                              screenshot_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """
         Search for game screenshots relevant to query
         
@@ -49,11 +52,12 @@ class GameDataSearchInterface:
             query: Natural language search query
             limit: Maximum number of results
             game_id: Optional filter by specific game
+            screenshot_ids: Optional list of specific screenshot IDs to search within
             
         Returns:
             List of matching screenshots with metadata, sorted by distance (ascending)
         """
-        results = self.vector_db.search_screenshots(query, limit, game_id)
+        results = self.vector_db.search_screenshots(query, limit, game_id, screenshot_ids)
         
         formatted_results = []
         for result in results:
@@ -71,15 +75,25 @@ class GameDataSearchInterface:
         return formatted_results
     
     def search_all_game_content(self, query: str, limit: int = 10, 
-                              game_id: Optional[str] = None) -> Dict[str, List[Dict[str, Any]]]:
+                              game_id: Optional[str] = None,
+                              feature_ids: Optional[List[str]] = None,
+                              screenshot_ids: Optional[List[str]] = None) -> Dict[str, List[Dict[str, Any]]]:
         """
         Search both features and screenshots
+        
+        Args:
+            query: Natural language search query
+            limit: Maximum number of results for EACH content type (features and screenshots)
+            game_id: Optional filter by specific game
+            feature_ids: Optional list of specific feature IDs to search within
+            screenshot_ids: Optional list of specific screenshot IDs to search within
         
         Returns:
             Dictionary with 'features' and 'screenshots' keys, both sorted by distance
         """
-        features = self.search_game_features(query, limit//2, game_id)
-        screenshots = self.search_game_screenshots(query, limit//2, game_id)
+        # Get the specified limit for each content type (not divided)
+        features = self.search_game_features(query, limit, game_id, feature_ids)
+        screenshots = self.search_game_screenshots(query, limit, game_id, screenshot_ids)
         
         # Sort both lists by distance (ascending - lower distance = more similar)
         features.sort(key=lambda x: x['distance'])
