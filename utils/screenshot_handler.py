@@ -69,44 +69,44 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         
         for row in rows:
             try:
-                row_dict = dict(zip(columns, row))
+            row_dict = dict(zip(columns, row))
                 feature_name = row_dict.get("feature_name") or "Unknown Feature"
-                
+            
                 if feature_name not in screenshot_groups:
                     screenshot_groups[feature_name] = []
-                
-                # Get the path from database (relative path)
-                screenshot_path = row_dict.get("path", "")
-                
-                # Construct full path by joining with base screenshots directory
-                if screenshot_path:
-                    full_screenshot_path = os.path.join("screenshots", screenshot_path)
-                else:
-                    full_screenshot_path = ""
-                
-                valid_path = full_screenshot_path
-                
-                # Check if path exists, if not try alternative extension
-                if full_screenshot_path and not os.path.exists(full_screenshot_path):
-                    if screenshot_path.lower().endswith('.jpg'):
-                        alternative_relative_path = screenshot_path[:-4] + '.png'
-                        alternative_full_path = os.path.join("screenshots", alternative_relative_path)
-                        if os.path.exists(alternative_full_path):
-                            valid_path = alternative_full_path
-                            print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
-                    elif screenshot_path.lower().endswith('.png'):
-                        alternative_relative_path = screenshot_path[:-4] + '.jpg'
-                        alternative_full_path = os.path.join("screenshots", alternative_relative_path)
-                        if os.path.exists(alternative_full_path):
-                            valid_path = alternative_full_path
-                            print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
-                
-                # If valid path exists, add to the group
-                if valid_path and os.path.exists(valid_path):
+            
+            # Get the path from database (relative path)
+            screenshot_path = row_dict.get("path", "")
+            
+            # Construct full path by joining with base screenshots directory
+            if screenshot_path:
+                full_screenshot_path = os.path.join("screenshots", screenshot_path)
+            else:
+                full_screenshot_path = ""
+            
+            valid_path = full_screenshot_path
+            
+            # Check if path exists, if not try alternative extension
+            if full_screenshot_path and not os.path.exists(full_screenshot_path):
+                if screenshot_path.lower().endswith('.jpg'):
+                    alternative_relative_path = screenshot_path[:-4] + '.png'
+                    alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                    if os.path.exists(alternative_full_path):
+                        valid_path = alternative_full_path
+                        print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
+                elif screenshot_path.lower().endswith('.png'):
+                    alternative_relative_path = screenshot_path[:-4] + '.jpg'
+                    alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                    if os.path.exists(alternative_full_path):
+                        valid_path = alternative_full_path
+                        print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
+            
+            # If valid path exists, add to the group
+            if valid_path and os.path.exists(valid_path):
                     screenshot_groups[feature_name].append({
-                        "path": valid_path,
-                        "caption": row_dict.get("caption", ""),
-                        "screenshot_id": row_dict.get("screenshot_id", ""),
+                    "path": valid_path,
+                    "caption": row_dict.get("caption", ""),
+                    "screenshot_id": row_dict.get("screenshot_id", ""),
                         "elements": row_dict.get("elements", {}),
                         "screen_name": row_dict.get("screen_name", "")
                     })
