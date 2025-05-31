@@ -81,7 +81,7 @@ def retrieve_screenshots_for_display_tool(screenshot_ids: List[str], feature_key
 def semantic_search_tool(
     query: str, 
     content_type: Literal["features", "screenshots", "both"] = "both",
-    limit: int = 10,
+    limit: int = 20,
     game_id: Optional[str] = None,
     feature_ids: Optional[List[str]] = None,
     screenshot_ids: Optional[List[str]] = None
@@ -95,7 +95,7 @@ def semantic_search_tool(
     Args:
         query: The search query to find semantically similar content
         content_type: What to search for - "features", "screenshots", or "both"  
-        limit: Maximum number of results to return for each content type (default: 10)
+        limit: Maximum number of results to return for each content type (default: 20, increase for broader exploration)
         game_id: Optional filter by specific game ID
         feature_ids: Optional list of specific feature IDs to search within (only for features/both)
         screenshot_ids: Optional list of specific screenshot IDs to search within (only for screenshots/both)
@@ -104,7 +104,8 @@ def semantic_search_tool(
         Dictionary containing search results with high-level metadata:
         - For features: feature_id, name, game_id, distance (similarity score)
         - For screenshots: screenshot_id, caption, game_id, distance (similarity score)
-        Note: Lower distance values indicate higher similarity
+        Note: Lower distance values indicate higher similarity.
+        IMPORTANT: This is for initial discovery only - use ALL screenshot IDs found via SQL for final display.
     """
     try:
         if GameDataSearchInterface is None:
