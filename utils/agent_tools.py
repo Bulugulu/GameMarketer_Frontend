@@ -1,9 +1,16 @@
 import streamlit as st
 import uuid
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Literal
 from agents import function_tool
 from database_tool import run_sql_query
 from .screenshot_handler import retrieve_screenshots_for_display
+
+# Import the ChromaDB vector search interface
+try:
+    from ChromaDB.vector_search_interface import GameDataSearchInterface
+except ImportError:
+    GameDataSearchInterface = None
+    print("[WARNING] ChromaDB vector search interface not available. Semantic search tool will be disabled.")
 
 @function_tool
 def run_sql_query_tool(query: str) -> Dict[str, Any]:
@@ -69,3 +76,98 @@ def retrieve_screenshots_for_display_tool(screenshot_ids: List[str], feature_key
         st.session_state.screenshots_to_display = result["screenshots_for_ui"]
     
     return result 
+
+@function_tool
+def semantic_search_tool(
+    query: str, 
+    content_type: Literal["features", "screenshots", "both"] = "both",
+    limit: int = 10
+) -> Dict[str, Any]:
+    """
+    Performs semantic search across game features and/or screenshots using vector embeddings.
+    This tool searches the ChromaDB vector database to find the most semantically similar content
+    to the user's query. Use this tool when you need to find relevant content based on meaning
+    rather than exact keyword matches.
+    
+    Args:
+        query: The search query to find semantically similar content
+        content_type: What to search for - "features", "screenshots", or "both"  
+        limit: Maximum number of results to return for each content type (default: 10)
+        
+    Returns:
+        Dictionary containing search results with high-level metadata:
+        - For features: feature_id, name, game_id, distance (similarity score)
+        - For screenshots: screenshot_id, caption, game_id, distance (similarity score)
+        Note: Lower distance values indicate higher similarity
+    """
+    try:
+        if GameDataSearchInterface is None:
+            return {
+                "error": "ChromaDB vector search interface not available. Please ensure ChromaDB is properly set up."
+            }
+        
+        print(f"[DEBUG LOG] Semantic search executed: '{query}' | Type: {content_type} | Limit: {limit}")
+        
+        # Initialize the search interface
+        search_interface = GameDataSearchInterface()
+        
+        result = {
+            "query": query,
+            "content_type": content_type,
+            "limit": limit
+        }
+        
+        if content_type == "features":
+            features = search_interface.search_game_features(query, limit=limit)
+            result["features"] = [
+                {
+                    "feature_id": f["feature_id"],
+                    "name": f["name"], 
+                    "game_id": f["game_id"],
+                    "distance": f["distance"]
+                }
+                for f in features
+            ]
+            print(f"[DEBUG LOG] Found {len(result['features'])} similar features")
+            
+        elif content_type == "screenshots":
+            screenshots = search_interface.search_game_screenshots(query, limit=limit)
+            result["screenshots"] = [
+                {
+                    "screenshot_id": s["screenshot_id"],
+                    "caption": s["caption"],
+                    "game_id": s["game_id"], 
+                    "distance": s["distance"]
+                }
+                for s in screenshots
+            ]
+            print(f"[DEBUG LOG] Found {len(result['screenshots'])} similar screenshots")
+            
+        else:  # both
+            all_results = search_interface.search_all_game_content(query, limit=limit)
+            result["features"] = [
+                {
+                    "feature_id": f["feature_id"],
+                    "name": f["name"],
+                    "game_id": f["game_id"],
+                    "distance": f["distance"]
+                }
+                for f in all_results.get("features", [])
+            ]
+            result["screenshots"] = [
+                {
+                    "screenshot_id": s["screenshot_id"],
+                    "caption": s["caption"],
+                    "game_id": s["game_id"],
+                    "distance": s["distance"]
+                }
+                for s in all_results.get("screenshots", [])
+            ]
+            print(f"[DEBUG LOG] Found {len(result.get('features', []))} features and {len(result.get('screenshots', []))} screenshots")
+        
+        return result
+        
+    except Exception as e:
+        error_result = {"error": f"Exception in semantic search: {str(e)}"}
+        print(f"[DEBUG LOG] Exception in semantic search: {str(e)}")
+        return error_result 

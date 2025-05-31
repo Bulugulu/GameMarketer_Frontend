@@ -2,7 +2,7 @@ import streamlit as st
 import asyncio
 import threading
 from agents import Agent, Runner
-from .agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool
+from .agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool, semantic_search_tool
 from .config import get_client
 
 # Define the SQL Analysis Agent
@@ -67,37 +67,68 @@ Column details:
 • confidence values are REAL between 0 and 1.
 • taxonomy.level is ENUM with values 'domain' and 'category' only.
 
+AVAILABLE TOOLS
+
+You have access to three main tools:
+
+1. **semantic_search_tool** - Use this for semantic/meaning-based searches
+   - Best for: Finding content based on concepts, themes, or functionality rather than exact keywords
+   - Searches the vector database using AI embeddings for semantic similarity  
+   - Returns feature_ids, names, screenshot_ids, and captions with similarity scores (distance)
+   - Lower distance = more similar content
+   - Can search "features", "screenshots", or "both"
+   - Adjustable limit (default 10 per content type)
+   
+2. **run_sql_query_tool** - Use for precise database queries
+   - Best for: Specific data retrieval, complex joins, filtering by exact criteria
+   - Direct SQL access to get full details after semantic search identifies targets
+   - Use feature_ids and screenshot_ids from semantic search to get complete data
+   
+3. **retrieve_screenshots_for_display_tool** - Use to show screenshots to user
+   - Always call this after identifying relevant screenshots
+   - Requires specific screenshot_ids (get these from semantic search or SQL queries)
+
 CONVERSION FLOW
-- Ask user for confirmation before fetching screenshots.
-- Before providing screenshots, summarize the options for the user, including the number of screenshots by category, and what the user can expect to find in those screenshots.
-- Your goal is to ensure that the screenshots are relevant to the user. 
-- Before providing the screenshots, take a look at the screenshot caption and elements to ensure that they are relevant to the user's question.
-- Organize information by feature, not by screenshot. 
+
+Follow this approach:
+
+1. **Start with semantic search** - Use semantic_search_tool to find conceptually relevant content
+2. **Evaluate semantic results** - Check if the returned features/screenshots match user intent
+3. **Refine with SQL if needed** - Use SQL queries to get full details, apply filters, or find related content
+4. **Get screenshots for display** - Use screenshot IDs to retrieve and show relevant screenshots
+5. **Confirm relevance** - Before showing screenshots, summarize what they contain and confirm relevance
 
 QUERY STRATEGY
 
-Follow these steps in order for each user question:
+For most user questions, follow this approach:
 
-1. **Normalize user question** - Break into concept tokens, map to taxonomy.name
-2. **Map tokens to taxonomy** - Use ILIKE queries to find matching taxons
-3. **Expand via taxon_features_xref** - Get feature_ids with confidence >= 0.7
-4. **Direct feature lookup** - Fallback search in features_game table
-5. **Get relevant screenshots** - Use screenshot_feature_xref with confidence >= 0.5
-6. **Return screenshots & metadata** - Call retrieve_screenshots_for_display_tool with UUIDs
+1. **Semantic search first** - Use semantic_search_tool to find content similar to user's query
+   - If user asks about "farming", semantic search will find crop-related features/screenshots
+   - If user asks about "buildings", it will find construction and building management content
+   - If user asks about "social features", it will find co-op and community content
+
+2. **Analyze semantic results** - Review the feature names and screenshot captions
+   - Check if distance scores are reasonable (< 1.0 for good matches)
+   - Look for patterns in the returned content
+
+3. **Use SQL for detailed information** - Query the database using the feature_ids and screenshot_ids
+   - Get full feature descriptions, screenshot elements, and related data
+   - Apply additional filters or find connected content
+
+4. **Present organized results** - Group information by feature or concept, not by individual items
 
 RULES & TIPS
 
-- Always try steps 1–7 before falling back to free-text search
-- Prefer JOINs and lookups over ILIKE or semantic search
-- Cast UUIDs → text only for output or LIKE operations
-- Always filter by Township game_id
-- When you find relevant screenshots, always call retrieve_screenshots_for_display_tool
-- Explain the connection between user's question and the screenshots shown
-- Use xref tables to find relationships between entities
-- Remember taxonomy.level only has 'domain' and 'category' values
+- **Start semantic, refine with SQL** - This hybrid approach leverages both AI understanding and precise querying
+- **Use semantic search for exploration** - When user's question is broad or conceptual
+- **Use SQL for precision** - When you need exact matches, complex filtering, or detailed data
+- **Combine both approaches** - Semantic search to discover, SQL to investigate and refine
+- **Always show screenshots when relevant** - Call retrieve_screenshots_for_display_tool with IDs found through either method
+- **Explain connections** - Help users understand why the content is relevant to their question
+- **Adjust search limits** - Use higher limits (20-50) for broad exploration, lower (5-10) for focused searches
 
 """,
-    tools=[run_sql_query_tool, retrieve_screenshots_for_display_tool]
+    tools=[semantic_search_tool, run_sql_query_tool, retrieve_screenshots_for_display_tool]
 )
 
 def get_agent_response(prompt_text, conversation_history):
