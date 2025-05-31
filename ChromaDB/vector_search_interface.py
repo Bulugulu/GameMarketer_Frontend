@@ -30,6 +30,7 @@ class GameDataSearchInterface:
             metadata = result['metadata']
             formatted_results.append({
                 'type': 'feature',
+                'feature_id': metadata.get('feature_id', ''),  # SQL feature ID for correlation
                 'name': metadata.get('name', ''),
                 'description': metadata.get('description', ''),
                 'game_id': metadata.get('game_id', ''),
@@ -59,6 +60,7 @@ class GameDataSearchInterface:
             metadata = result['metadata']
             formatted_results.append({
                 'type': 'screenshot',
+                'screenshot_id': metadata.get('screenshot_id', ''),  # SQL screenshot ID for correlation
                 'path': metadata.get('path', ''),
                 'caption': metadata.get('caption', ''),
                 'game_id': metadata.get('game_id', ''),
