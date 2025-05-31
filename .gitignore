@@ -126,6 +126,13 @@ dmypy.json
 *.sqlite
 *.sqlite3
 
+# ChromaDB Vector Database
+ChromaDB/chroma_db/
+ChromaDB/chroma_db/**/*
+ChromaDB/*.sqlite3
+ChromaDB/feature_embeddings.json
+ChromaDB/screenshot_embeddings.json
+
 # IDE and Editor files
 .vscode/
 .idea/
