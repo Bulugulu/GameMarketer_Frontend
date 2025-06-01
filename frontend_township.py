@@ -4,7 +4,10 @@ from utils import (
     get_agent_response, 
     display_screenshot_group, 
     show_fullscreen_image, 
-    initialize_session_state
+    initialize_session_state,
+    parse_agent_response,
+    log_developer_note,
+    display_developer_notes_panel
 )
 
 # Configure page to use wide layout
@@ -245,10 +248,21 @@ def main():
                 current_conversation_history = [msg for msg in st.session_state.messages[:-1]]
                 
                 with st.spinner("Thinking..."):
-                    bot_response_content = get_agent_response(last_user_message, current_conversation_history)
+                    raw_bot_response = get_agent_response(last_user_message, current_conversation_history)
                 
-                # Create the assistant message
-                assistant_message = {"role": "assistant", "content": bot_response_content}
+                # Parse the response to extract user_response and developer_note
+                user_response, developer_note = parse_agent_response(raw_bot_response)
+                
+                # Log developer note if present
+                if developer_note:
+                    log_developer_note(
+                        developer_note=developer_note,
+                        user_query=last_user_message,
+                        conversation_id=f"session_{id(st.session_state)}"
+                    )
+                
+                # Create the assistant message with only the user response
+                assistant_message = {"role": "assistant", "content": user_response}
                 
                 # If screenshots were generated, add them to the message
                 if st.session_state.screenshots_to_display:
@@ -269,7 +283,10 @@ def main():
         screenshot_container = st.container(height=700)  # Fixed height container with scrolling
         
         with screenshot_container:
-            # Display vector debug info at the top
+            # Display developer notes panel (for development/debugging)
+            display_developer_notes_panel()
+            
+            # Display vector debug info
             display_vector_debug_info()
             
             # Screenshot preview drawer

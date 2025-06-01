@@ -1,9 +1,16 @@
 import streamlit as st
 import asyncio
 import threading
+from pydantic import BaseModel, Field
 from agents import Agent, Runner
 from .agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool, semantic_search_tool
 from .config import get_client
+
+# Pydantic model for structured output
+class AgentResponse(BaseModel):
+    """Structured response model for meta prompting."""
+    user_reponse: str = Field(description="The response to show to the user")
+    developer_note: str = Field(default="", description="Internal feedback for developers - issues, improvements, or system insights")
 
 # Define the SQL Analysis Agent
 sql_analysis_agent = Agent(
@@ -191,15 +198,15 @@ To drive impact, every action and feature needs to inflect these KPIs. A feature
 
 When researching competitors, our starting point is typically one of the following:
 We need to increase a specific metric and are looking for features that will help do so.
-We have identified that a particular type of feature will increase the metric, and so we’re researching the best implementations of those features that have already had impact. 
+We have identified that a particular type of feature will increase the metric, and so we're researching the best implementations of those features that have already had impact. 
 
 // What information is important about a feature or mechanic
-When looking at a competitor’s game mechanic, I look for the following:
+When looking at a competitor's game mechanic, I look for the following:
 What behaviors are they trying to drive from the player?
 What KPIs would these behaviors improve?
 What details of the implementation are not intuitive and likely required intentional thought and experimentation from the game designers?
 
-For example, in Yahtzee with Buddies, we had a boost feature for entering tournaments. This allowed players to “bet” more when entering a tournament and also get more points if they win. The behavior we expected to drive from the player is to spend more per match. Even if players continued to play 30 minutes a day, by boosting, they could spend up to 5 times more currency. The spend of currency would result in faster draining of wallets and more demand for currency, which would in turn drive monetization. 
+For example, in Yahtzee with Buddies, we had a boost feature for entering tournaments. This allowed players to "bet" more when entering a tournament and also get more points if they win. The behavior we expected to drive from the player is to spend more per match. Even if players continued to play 30 minutes a day, by boosting, they could spend up to 5 times more currency. The spend of currency would result in faster draining of wallets and more demand for currency, which would in turn drive monetization. 
 
 // Currencies, Sink, and Source
 Games are based around economies of currencies. Currencies are at the basis of free-to-play game design. 
@@ -209,13 +216,13 @@ Currencies typically allow players to achieve their goals in the game and progre
 Many features are designed to encourage players to spend their currency. It is of particular interest to understand how currencies are used in the game in general and in a specific feature. 
 
 Some currencies are permanent and some are temporary and event based. 
-In addition, some currencies have special mechanics. For instance, “energy” is like a currency but regenerates over time and has a cap. Currencies with caps are meant to prevent hoarding - a situation where the player has so much that they don’t want any more, a supply/inflation issue. Caps with regeneration also encourage players to play more frequently, so that they don’t “waste” their currency.  
+In addition, some currencies have special mechanics. For instance, "energy" is like a currency but regenerates over time and has a cap. Currencies with caps are meant to prevent hoarding - a situation where the player has so much that they don't want any more, a supply/inflation issue. Caps with regeneration also encourage players to play more frequently, so that they don't "waste" their currency.  
 
-When anaylzing a feature, it’s important to map any feature-specific currencies and the use of general game currencies. 
+When anaylzing a feature, it's important to map any feature-specific currencies and the use of general game currencies. 
 
 Typically, games will find a way to connect the two. Hard currency, in particular, will often allow players to purchase event-specific currencies. 
 
-Another currency distinction is whether they are “Free” or “paid”. Some currencies can be attained for free and the player will rarely be “pinched”. Pinched means that the player wants or needs more but doesn’t have enough. Free currencies are important for engagement and progression. Paid currencies are typically more scarce to position their value and increase demand, to drive monetization.
+Another currency distinction is whether they are "Free" or "paid". Some currencies can be attained for free and the player will rarely be "pinched". Pinched means that the player wants or needs more but doesn't have enough. Free currencies are important for engagement and progression. Paid currencies are typically more scarce to position their value and increase demand, to drive monetization.
 
 // Major feature categories and their corresponding goals
 
@@ -223,19 +230,26 @@ Another currency distinction is whether they are “Free” or “paid”. Some 
 Random rewards
 Random rewards are one of the most powerful mechanics in games, because they operate on random reward schedules that are proven, through behavioral psychology, to create the most enduring habits. 
 
-Random rewards are when a player earns a reward and they don’t know which reward it will be or how much they’ll get. Typically, these rewards are accompanied with drop chances. Systems that make use of random rewards include gacha and loot boxes. Despite the different names, the underlying mechanic is the same - randomness. 
+Random rewards are when a player earns a reward and they don't know which reward it will be or how much they'll get. Typically, these rewards are accompanied with drop chances. Systems that make use of random rewards include gacha and loot boxes. Despite the different names, the underlying mechanic is the same - randomness. 
 
 Random rewards tend to work well because of the likelihood of getting something great. This creates excitement and adrenaline, and the desire to get more random rewards.
 
-Random rewards are also a way to fragment a reward and obfuscate the cost. For example, a player may be willing to pay $10 for a legendary hero, but they will instead purchase 50 loot boxes for $1 each, for a 2% chance of getting the legendary hero. As a result, the discrete item “legendary hero” has been fragmented into 50 loot boxes, and the player has lost track of how much it truly cost them. 
+Random rewards are also a way to fragment a reward and obfuscate the cost. For example, a player may be willing to pay $10 for a legendary hero, but they will instead purchase 50 loot boxes for $1 each, for a 2% chance of getting the legendary hero. As a result, the discrete item "legendary hero" has been fragmented into 50 loot boxes, and the player has lost track of how much it truly cost them. 
 
-Importantly, random rewards can be given to the player for free, for money, or for both. It’s important to make this distinction from a game design perspective. 
+Importantly, random rewards can be given to the player for free, for money, or for both. It's important to make this distinction from a game design perspective. 
 For example, a loot box can be provided to players after every match, which would be a free random reward. 
 Perhaps players can also purchase more loot boxes in the store, which is a paid random reward. 
 
+// Meta Prompting Instructions
+If you encounter any issues, missing information, unexpected behaviors, ambiguities, user suggestions for improvements, or have suggestions for improving your own system prompt or tooling, please include them in the developer_note field.
+
+Your response will be structured output using the AgentResponse model with:
+- user_reponse: The response to show to the user
+- developer_note: Internal feedback for developers (leave empty if no issues or suggestions)
 
 """,
-    tools=[semantic_search_tool, run_sql_query_tool, retrieve_screenshots_for_display_tool]
+    tools=[semantic_search_tool, run_sql_query_tool, retrieve_screenshots_for_display_tool],
+    output_type=AgentResponse
 )
 
 def get_agent_response(prompt_text, conversation_history):
@@ -271,7 +285,19 @@ def get_agent_response(prompt_text, conversation_history):
         # Run the async function in a new event loop
         try:
             # Use asyncio.run() to create a new event loop and run the agent
-            return asyncio.run(run_agent_async())
+            agent_output = asyncio.run(run_agent_async())
+            
+            # Handle structured output - the agent now returns an AgentResponse object
+            if isinstance(agent_output, AgentResponse):
+                # Return the structured response as a JSON string for our existing parsing logic
+                return {
+                    "user_reponse": agent_output.user_reponse,
+                    "developer_note": agent_output.developer_note
+                }
+            else:
+                # Fallback for any unexpected response format
+                return str(agent_output)
+                
         except RuntimeError as e:
             if "cannot be called from a running event loop" in str(e):
                 # If we're in a running event loop, use a thread
@@ -281,7 +307,15 @@ def get_agent_response(prompt_text, conversation_history):
                 def run_in_thread():
                     nonlocal result, exception
                     try:
-                        result = asyncio.run(run_agent_async())
+                        agent_output = asyncio.run(run_agent_async())
+                        # Handle structured output in thread context too
+                        if isinstance(agent_output, AgentResponse):
+                            result = {
+                                "user_reponse": agent_output.user_reponse,
+                                "developer_note": agent_output.developer_note
+                            }
+                        else:
+                            result = str(agent_output)
                     except Exception as e:
                         exception = e
                 
