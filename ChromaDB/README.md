@@ -105,22 +105,32 @@ print(f"Found {len(results['features'])} features and {len(results['screenshots'
 ```
 
 ### Distance-Based Scoring
-**Important**: Results use **distance** scoring where **lower values = more similar**
-- Distance typically ranges from 0.0 to 2.0 (cosine distance)
-- 0.0 = identical, 2.0 = completely different
+**Important**: Results use **cosine distance** scoring where **lower values = more similar**
+- Distance typically ranges from 0.0 to 2.0 (cosine distance between normalized vectors)
+- 0.0 = identical vectors (same direction), 2.0 = completely opposite vectors
 - Results are automatically sorted by distance (ascending)
+- **Cosine distance formula**: `distance = 1 - cosine_similarity`
+- **Cosine similarity formula**: `cos(θ) = (A·B) / (|A|×|B|)`
 
 ```python
-# Example distances
+# Example distances with cosine metric
 features = search.search_game_features("building construction")
 for feature in features:
-    if feature['distance'] < 0.5:
-        print(f"Very similar: {feature['name']}")
-    elif feature['distance'] < 1.0:
+    if feature['distance'] < 0.3:
+        print(f"Highly similar: {feature['name']}")
+    elif feature['distance'] < 0.7:
+        print(f"Moderately similar: {feature['name']}")
+    elif feature['distance'] < 1.2:
         print(f"Somewhat similar: {feature['name']}")
     else:
         print(f"Less similar: {feature['name']}")
 ```
+
+### Why Cosine Distance for Text Embeddings?
+- **OpenAI embeddings** (`text-embedding-3-large`) are normalized to unit length
+- **Cosine distance** measures the angle between vectors, focusing on semantic direction
+- **Better semantic results** compared to L2 distance which measures coordinate differences
+- **Ideal for text similarity** where meaning matters more than magnitude
 
 ### Game-Specific Search
 ```python

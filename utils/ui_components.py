@@ -117,4 +117,6 @@ def initialize_session_state():
     if "current_image_index" not in st.session_state:
         st.session_state.current_image_index = 0
     if "current_group_title" not in st.session_state:
-        st.session_state.current_group_title = "" 
+        st.session_state.current_group_title = ""
+    if "waiting_for_response" not in st.session_state:
+        st.session_state.waiting_for_response = False 

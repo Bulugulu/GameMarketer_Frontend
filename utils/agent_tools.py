@@ -156,6 +156,48 @@ def semantic_search_tool(
             ]
             print(f"[DEBUG LOG] Found {len(result['features'])} similar features")
             
+            # Enhanced debug output for features with distances
+            if result["features"]:
+                print("[VECTOR SIMILARITY DEBUG] Feature Results with Distances:")
+                for i, feature in enumerate(result["features"], 1):
+                    print(f"  {i}. Feature ID: {feature['feature_id']} | Distance: {feature['distance']:.4f} | Name: {feature['name']}")
+                
+                # Calculate distance statistics
+                distances = [f["distance"] for f in result["features"]]
+                min_dist, max_dist = min(distances), max(distances)
+                avg_dist = sum(distances) / len(distances)
+                print(f"[VECTOR SIMILARITY DEBUG] Distance Range: {min_dist:.4f} - {max_dist:.4f} | Average: {avg_dist:.4f}")
+                
+                # Suggest potential cutoffs
+                quartiles = sorted(distances)
+                q1_idx = len(quartiles) // 4
+                q3_idx = 3 * len(quartiles) // 4
+                if len(quartiles) > 3:
+                    print(f"[VECTOR SIMILARITY DEBUG] Distance Quartiles: Q1={quartiles[q1_idx]:.4f}, Q3={quartiles[q3_idx]:.4f}")
+                
+                # Store debug info for UI display
+                debug_info = {
+                    "query": query,
+                    "content_type": content_type,
+                    "limit": limit,
+                    "features": result["features"],
+                    "distance_stats": {
+                        "min": min_dist,
+                        "max": max_dist,
+                        "avg": avg_dist
+                    }
+                }
+                if len(quartiles) > 3:
+                    debug_info["distance_stats"]["suggested_cutoffs"] = {
+                        "high": quartiles[q1_idx],
+                        "medium": quartiles[q3_idx]
+                    }
+                st.session_state.vector_debug_info.append(debug_info)
+                
+                # Keep only the last 10 debug entries to prevent memory issues
+                if len(st.session_state.vector_debug_info) > 10:
+                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
+            
         elif content_type == "screenshots":
             screenshots = search_interface.search_game_screenshots(
                 query, limit=limit, game_id=game_id, screenshot_ids=screenshot_ids
@@ -170,6 +212,49 @@ def semantic_search_tool(
                 for s in screenshots
             ]
             print(f"[DEBUG LOG] Found {len(result['screenshots'])} similar screenshots")
+            
+            # Enhanced debug output for screenshots with distances
+            if result["screenshots"]:
+                print("[VECTOR SIMILARITY DEBUG] Screenshot Results with Distances:")
+                for i, screenshot in enumerate(result["screenshots"], 1):
+                    caption_preview = screenshot['caption'][:50] + "..." if len(screenshot['caption']) > 50 else screenshot['caption']
+                    print(f"  {i}. Screenshot ID: {screenshot['screenshot_id']} | Distance: {screenshot['distance']:.4f} | Caption: {caption_preview}")
+                
+                # Calculate distance statistics
+                distances = [s["distance"] for s in result["screenshots"]]
+                min_dist, max_dist = min(distances), max(distances)
+                avg_dist = sum(distances) / len(distances)
+                print(f"[VECTOR SIMILARITY DEBUG] Distance Range: {min_dist:.4f} - {max_dist:.4f} | Average: {avg_dist:.4f}")
+                
+                # Suggest potential cutoffs
+                quartiles = sorted(distances)
+                q1_idx = len(quartiles) // 4
+                q3_idx = 3 * len(quartiles) // 4
+                if len(quartiles) > 3:
+                    print(f"[VECTOR SIMILARITY DEBUG] Distance Quartiles: Q1={quartiles[q1_idx]:.4f}, Q3={quartiles[q3_idx]:.4f}")
+                
+                # Store debug info for UI display
+                debug_info = {
+                    "query": query,
+                    "content_type": content_type,
+                    "limit": limit,
+                    "screenshots": result["screenshots"],
+                    "distance_stats": {
+                        "min": min_dist,
+                        "max": max_dist,
+                        "avg": avg_dist
+                    }
+                }
+                if len(quartiles) > 3:
+                    debug_info["distance_stats"]["suggested_cutoffs"] = {
+                        "high": quartiles[q1_idx],
+                        "medium": quartiles[q3_idx]
+                    }
+                st.session_state.vector_debug_info.append(debug_info)
+                
+                # Keep only the last 10 debug entries to prevent memory issues
+                if len(st.session_state.vector_debug_info) > 10:
+                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
             
         else:  # both
             all_results = search_interface.search_all_game_content(
@@ -195,6 +280,78 @@ def semantic_search_tool(
                 for s in all_results.get("screenshots", [])
             ]
             print(f"[DEBUG LOG] Found {len(result.get('features', []))} features and {len(result.get('screenshots', []))} screenshots")
+            
+            # Enhanced debug output for combined results
+            if result.get("features"):
+                print("[VECTOR SIMILARITY DEBUG] Feature Results with Distances:")
+                for i, feature in enumerate(result["features"], 1):
+                    print(f"  {i}. Feature ID: {feature['feature_id']} | Distance: {feature['distance']:.4f} | Name: {feature['name']}")
+                
+                # Calculate feature distance statistics
+                feature_distances = [f["distance"] for f in result["features"]]
+                if feature_distances:
+                    min_dist, max_dist = min(feature_distances), max(feature_distances)
+                    avg_dist = sum(feature_distances) / len(feature_distances)
+                    print(f"[VECTOR SIMILARITY DEBUG] Feature Distance Range: {min_dist:.4f} - {max_dist:.4f} | Average: {avg_dist:.4f}")
+            
+            if result.get("screenshots"):
+                print("[VECTOR SIMILARITY DEBUG] Screenshot Results with Distances:")
+                for i, screenshot in enumerate(result["screenshots"], 1):
+                    caption_preview = screenshot['caption'][:50] + "..." if len(screenshot['caption']) > 50 else screenshot['caption']
+                    print(f"  {i}. Screenshot ID: {screenshot['screenshot_id']} | Distance: {screenshot['distance']:.4f} | Caption: {caption_preview}")
+                
+                # Calculate screenshot distance statistics
+                screenshot_distances = [s["distance"] for s in result["screenshots"]]
+                if screenshot_distances:
+                    min_dist, max_dist = min(screenshot_distances), max(screenshot_distances)
+                    avg_dist = sum(screenshot_distances) / len(screenshot_distances)
+                    print(f"[VECTOR SIMILARITY DEBUG] Screenshot Distance Range: {min_dist:.4f} - {max_dist:.4f} | Average: {avg_dist:.4f}")
+            
+            # Combined distance analysis for both types
+            all_distances = []
+            if result.get("features"):
+                all_distances.extend([f["distance"] for f in result["features"]])
+            if result.get("screenshots"):
+                all_distances.extend([s["distance"] for s in result["screenshots"]])
+            
+            if all_distances:
+                all_distances.sort()
+                print(f"[VECTOR SIMILARITY DEBUG] Combined Distance Analysis: Min={min(all_distances):.4f}, Max={max(all_distances):.4f}, Median={all_distances[len(all_distances)//2]:.4f}")
+                
+                # Suggest relevance cutoffs based on data distribution
+                if len(all_distances) >= 5:
+                    cutoff_50 = all_distances[len(all_distances)//2]
+                    cutoff_75 = all_distances[3*len(all_distances)//4]
+                    print(f"[VECTOR SIMILARITY DEBUG] Suggested cutoffs: High relevance < {cutoff_50:.4f}, Medium relevance < {cutoff_75:.4f}")
+                
+                # Store debug info for UI display (combined results)
+                debug_info = {
+                    "query": query,
+                    "content_type": content_type,
+                    "limit": limit,
+                    "distance_stats": {
+                        "min": min(all_distances),
+                        "max": max(all_distances),
+                        "avg": sum(all_distances) / len(all_distances)
+                    }
+                }
+                
+                if result.get("features"):
+                    debug_info["features"] = result["features"]
+                if result.get("screenshots"):
+                    debug_info["screenshots"] = result["screenshots"]
+                
+                if len(all_distances) >= 5:
+                    debug_info["distance_stats"]["suggested_cutoffs"] = {
+                        "high": cutoff_50,
+                        "medium": cutoff_75
+                    }
+                
+                st.session_state.vector_debug_info.append(debug_info)
+                
+                # Keep only the last 10 debug entries to prevent memory issues
+                if len(st.session_state.vector_debug_info) > 10:
+                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
         
         return result
         

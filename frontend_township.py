@@ -139,11 +139,66 @@ def display_screenshot_drawer():
         unique_key = f"drawer_group_{idx}"
         display_screenshot_group(screenshot_group, unique_key)
 
+def display_vector_debug_info():
+    """Display vector similarity debug information"""
+    if not st.session_state.vector_debug_info:
+        return
+    
+    with st.expander("🔍 Vector Similarity Debug Info", expanded=False):
+        # Add clear button
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("**Recent Vector Search Results with Distances:**")
+        with col2:
+            if st.button("Clear Debug", key="clear_vector_debug"):
+                st.session_state.vector_debug_info = []
+                st.rerun()
+        
+        st.markdown("""
+        **Distance Interpretation (Cosine Distance):**
+        - 🟢 **< 0.3**: Highly relevant (very similar semantic meaning)
+        - 🟡 **0.3 - 0.7**: Moderately relevant (somewhat similar)  
+        - 🟠 **0.7 - 1.2**: Somewhat relevant (loosely related)
+        - 🔴 **> 1.2**: Low relevance (different semantic meaning)
+        - **Formula**: `distance = 1 - cosine_similarity`
+        - Distance range: 0.0 (identical) to 2.0 (opposite direction)
+        """)
+        
+        for debug_info in reversed(st.session_state.vector_debug_info[-3:]):  # Show last 3 searches
+            st.markdown(f"**Query:** `{debug_info['query']}`")
+            st.markdown(f"**Content Type:** {debug_info['content_type']} | **Limit:** {debug_info['limit']}")
+            
+            if debug_info.get('features'):
+                st.markdown("**Features Found:**")
+                for i, feature in enumerate(debug_info['features'], 1):
+                    relevance_color = "🟢" if feature['distance'] < 0.3 else "🟡" if feature['distance'] < 0.7 else "🟠" if feature['distance'] < 1.2 else "🔴"
+                    st.markdown(f"  {relevance_color} `{feature['distance']:.4f}` - {feature['name']} (ID: {feature['feature_id']})")
+            
+            if debug_info.get('screenshots'):
+                st.markdown("**Screenshots Found:**")
+                for i, screenshot in enumerate(debug_info['screenshots'], 1):
+                    caption_preview = screenshot['caption'][:40] + "..." if len(screenshot['caption']) > 40 else screenshot['caption']
+                    relevance_color = "🟢" if screenshot['distance'] < 0.3 else "🟡" if screenshot['distance'] < 0.7 else "🟠" if screenshot['distance'] < 1.2 else "🔴"
+                    st.markdown(f"  {relevance_color} `{screenshot['distance']:.4f}` - {caption_preview}")
+            
+            if debug_info.get('distance_stats'):
+                stats = debug_info['distance_stats']
+                st.markdown(f"**Distance Stats:** Min: `{stats['min']:.4f}` | Max: `{stats['max']:.4f}` | Avg: `{stats['avg']:.4f}`")
+                if stats.get('suggested_cutoffs'):
+                    cutoffs = stats['suggested_cutoffs']
+                    st.markdown(f"**Suggested Cutoffs:** High relevance < `{cutoffs['high']:.4f}` | Medium relevance < `{cutoffs['medium']:.4f}`")
+            
+            st.markdown("---")
+
 def main():
     st.title("Township Feature Analyst Chatbot (Agentic)")
 
     # Initialize session state
     initialize_session_state()
+
+    # Initialize debug info storage if not exists
+    if "vector_debug_info" not in st.session_state:
+        st.session_state.vector_debug_info = []
 
     # Show fullscreen dialog if in fullscreen mode
     if st.session_state.fullscreen_mode:
@@ -174,12 +229,23 @@ def main():
         
         # Handle new user input - this stays at the bottom
         if prompt := st.chat_input("Ask about Township features...", key="chat_input"):
+            # Add user message immediately and trigger rerun to show it
             st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.waiting_for_response = True
+            st.rerun()
+        
+        # Handle assistant response in a separate cycle
+        if st.session_state.get("waiting_for_response", False):
+            st.session_state.waiting_for_response = False
             
             client = get_client()
             if client:
+                # Get the last user message for context
+                last_user_message = st.session_state.messages[-1]["content"]
                 current_conversation_history = [msg for msg in st.session_state.messages[:-1]]
-                bot_response_content = get_agent_response(prompt, current_conversation_history)
+                
+                with st.spinner("Thinking..."):
+                    bot_response_content = get_agent_response(last_user_message, current_conversation_history)
                 
                 # Create the assistant message
                 assistant_message = {"role": "assistant", "content": bot_response_content}
@@ -203,6 +269,9 @@ def main():
         screenshot_container = st.container(height=700)  # Fixed height container with scrolling
         
         with screenshot_container:
+            # Display vector debug info at the top
+            display_vector_debug_info()
+            
             # Screenshot preview drawer
             display_screenshot_drawer()
 

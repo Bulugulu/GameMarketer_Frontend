@@ -38,24 +38,26 @@ class ChromaDBManager:
     
     def create_collections(self):
         """Create collections for features and screenshots"""
-        # Features collection
+        # Features collection with cosine distance for better text similarity
         features_collection = self.client.get_or_create_collection(
             name="game_features",
             metadata={
                 "description": "Game feature embeddings",
                 "embedding_model": "text-embedding-3-large",
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
+                "hnsw:space": "cosine"  # Use cosine distance for better text semantics
             },
             embedding_function=self.embedding_function
         )
         
-        # Screenshots collection
+        # Screenshots collection with cosine distance for better text similarity
         screenshots_collection = self.client.get_or_create_collection(
             name="game_screenshots",
             metadata={
                 "description": "Game screenshot embeddings",
                 "embedding_model": "text-embedding-3-large",
-                "created_at": datetime.now().isoformat()
+                "created_at": datetime.now().isoformat(),
+                "hnsw:space": "cosine"  # Use cosine distance for better text semantics
             },
             embedding_function=self.embedding_function
         )
