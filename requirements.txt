@@ -7,4 +7,5 @@ yt-dlp
 imagehash
 Pillow
 chromadb>=0.4.15
-pathlib2 
+pathlib2
+cohere>=5.0.0 

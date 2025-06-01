@@ -151,14 +151,22 @@ def display_vector_debug_info():
         # Add clear button
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown("**Recent Vector Search Results with Distances:**")
+            st.markdown("**Recent Vector Search Results with Scores:**")
         with col2:
             if st.button("Clear Debug", key="clear_vector_debug"):
                 st.session_state.vector_debug_info = []
                 st.rerun()
         
         st.markdown("""
-        **Distance Interpretation (Cosine Distance):**
+        **Score Interpretation:**
+        
+        **🆕 Cohere Relevance Scores (0.0-1.0) - Primary scoring when reranking is enabled:**
+        - 🟢 **≥ 0.8**: Highly relevant (excellent semantic match)
+        - 🟡 **0.6 - 0.79**: Moderately relevant (good semantic match)  
+        - 🟠 **0.4 - 0.59**: Somewhat relevant (fair semantic match)
+        - 🔴 **< 0.4**: Low relevance (poor semantic match)
+        
+        **📐 Cosine Distance (0.0-2.0) - Fallback when reranking unavailable:**
         - 🟢 **< 0.3**: Highly relevant (very similar semantic meaning)
         - 🟡 **0.3 - 0.7**: Moderately relevant (somewhat similar)  
         - 🟠 **0.7 - 1.2**: Somewhat relevant (loosely related)
@@ -171,22 +179,49 @@ def display_vector_debug_info():
             st.markdown(f"**Query:** `{debug_info['query']}`")
             st.markdown(f"**Content Type:** {debug_info['content_type']} | **Limit:** {debug_info['limit']}")
             
+            # Check if we have reranking results or fallback distance results
+            has_relevance_scores = False
+            if debug_info.get('features') and debug_info['features']:
+                has_relevance_scores = 'relevance_score' in debug_info['features'][0]
+            elif debug_info.get('screenshots') and debug_info['screenshots']:
+                has_relevance_scores = 'relevance_score' in debug_info['screenshots'][0]
+            
+            score_type = "Cohere Relevance" if has_relevance_scores else "Cosine Distance"
+            st.markdown(f"**Scoring System:** {score_type}")
+            
             if debug_info.get('features'):
                 st.markdown("**Features Found:**")
                 for i, feature in enumerate(debug_info['features'], 1):
-                    relevance_color = "🟢" if feature['distance'] < 0.3 else "🟡" if feature['distance'] < 0.7 else "🟠" if feature['distance'] < 1.2 else "🔴"
-                    st.markdown(f"  {relevance_color} `{feature['distance']:.4f}` - {feature['name']} (ID: {feature['feature_id']})")
+                    if 'relevance_score' in feature:
+                        # Cohere relevance score (higher is better)
+                        score = feature['relevance_score']
+                        relevance_color = "🟢" if score >= 0.8 else "🟡" if score >= 0.6 else "🟠" if score >= 0.4 else "🔴"
+                        st.markdown(f"  {relevance_color} `{score:.3f}` - {feature['name']} (ID: {feature['feature_id']})")
+                    else:
+                        # Cosine distance (lower is better)
+                        distance = feature.get('distance', 0)
+                        relevance_color = "🟢" if distance < 0.3 else "🟡" if distance < 0.7 else "🟠" if distance < 1.2 else "🔴"
+                        st.markdown(f"  {relevance_color} `{distance:.4f}` - {feature['name']} (ID: {feature['feature_id']})")
             
             if debug_info.get('screenshots'):
                 st.markdown("**Screenshots Found:**")
                 for i, screenshot in enumerate(debug_info['screenshots'], 1):
                     caption_preview = screenshot['caption'][:40] + "..." if len(screenshot['caption']) > 40 else screenshot['caption']
-                    relevance_color = "🟢" if screenshot['distance'] < 0.3 else "🟡" if screenshot['distance'] < 0.7 else "🟠" if screenshot['distance'] < 1.2 else "🔴"
-                    st.markdown(f"  {relevance_color} `{screenshot['distance']:.4f}` - {caption_preview}")
+                    
+                    if 'relevance_score' in screenshot:
+                        # Cohere relevance score (higher is better)
+                        score = screenshot['relevance_score']
+                        relevance_color = "🟢" if score >= 0.8 else "🟡" if score >= 0.6 else "🟠" if score >= 0.4 else "🔴"
+                        st.markdown(f"  {relevance_color} `{score:.3f}` - {caption_preview}")
+                    else:
+                        # Cosine distance (lower is better)
+                        distance = screenshot.get('distance', 0)
+                        relevance_color = "🟢" if distance < 0.3 else "🟡" if distance < 0.7 else "🟠" if distance < 1.2 else "🔴"
+                        st.markdown(f"  {relevance_color} `{distance:.4f}` - {caption_preview}")
             
             if debug_info.get('distance_stats'):
                 stats = debug_info['distance_stats']
-                st.markdown(f"**Distance Stats:** Min: `{stats['min']:.4f}` | Max: `{stats['max']:.4f}` | Avg: `{stats['avg']:.4f}`")
+                st.markdown(f"**Score Stats:** Min: `{stats['min']:.4f}` | Max: `{stats['max']:.4f}` | Avg: `{stats['avg']:.4f}`")
                 if stats.get('suggested_cutoffs'):
                     cutoffs = stats['suggested_cutoffs']
                     st.markdown(f"**Suggested Cutoffs:** High relevance < `{cutoffs['high']:.4f}` | Medium relevance < `{cutoffs['medium']:.4f}`")
