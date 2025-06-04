@@ -75,8 +75,43 @@ Examples:
     
     print(f"Running evaluation with config: {config_path}")
     
-    # Run the evaluation
-    asyncio.run(run_evaluation(config_path, args))
+    # Run the evaluation with proper cleanup
+    success = False
+    try:
+        asyncio.run(run_evaluation(config_path, args))
+        success = True
+    finally:
+        # Force cleanup of any remaining event loop resources
+        try:
+            # Try to get the event loop in different ways
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                try:
+                    loop = asyncio.get_event_loop()
+                except RuntimeError:
+                    loop = None
+            
+            if loop and not loop.is_closed():
+                # Cancel all tasks
+                try:
+                    pending = asyncio.all_tasks(loop)
+                    for task in pending:
+                        task.cancel()
+                except RuntimeError:
+                    pass  # Tasks might be from a different loop
+                
+                # Close the loop
+                try:
+                    loop.close()
+                except RuntimeError:
+                    pass  # Loop might already be closed
+        except:
+            pass  # Ignore all cleanup errors
+        
+        # Force exit only on successful completion to ensure process terminates
+        if success:
+            os._exit(0)
 
 async def run_evaluation(config_path: str, args):
     """Run the evaluation with the given configuration."""
