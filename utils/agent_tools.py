@@ -4,6 +4,7 @@ from typing import List, Dict, Any, Optional, Literal
 from agents import function_tool
 from database_tool import run_sql_query
 from .screenshot_handler import retrieve_screenshots_for_display
+from .context_detector import ExecutionContext, logger
 
 # Import the ChromaDB vector search interface
 try:
@@ -71,9 +72,9 @@ def retrieve_screenshots_for_display_tool(screenshot_ids: List[str], feature_key
     
     result = retrieve_screenshots_for_display(screenshot_ids, feature_keywords)
     
-    # Store screenshots for UI display
+    # Store screenshots for UI display (context-aware)
     if "screenshots_for_ui" in result:
-        st.session_state.screenshots_to_display = result["screenshots_for_ui"]
+        ExecutionContext.set_session_state_value("screenshots_to_display", result["screenshots_for_ui"])
     
     return result 
 
@@ -184,7 +185,7 @@ def semantic_search_tool(
                 if len(quartiles) > 3:
                     print(f"[VECTOR SIMILARITY DEBUG] {score_type.title()} Quartiles: Q1={quartiles[q1_idx]:.4f}, Q3={quartiles[q3_idx]:.4f}")
                 
-                # Store debug info for UI display
+                # Store debug info for UI display (context-aware)
                 debug_info = {
                     "query": query,
                     "content_type": content_type,
@@ -201,11 +202,10 @@ def semantic_search_tool(
                         "high": quartiles[q1_idx],
                         "medium": quartiles[q3_idx]
                     }
-                st.session_state.vector_debug_info.append(debug_info)
                 
-                # Keep only the last 10 debug entries to prevent memory issues
-                if len(st.session_state.vector_debug_info) > 10:
-                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
+                # Initialize and append debug info (context-aware)
+                ExecutionContext.initialize_session_state_key("vector_debug_info", [])
+                ExecutionContext.append_to_session_list("vector_debug_info", debug_info, max_length=10)
             
         elif content_type == "screenshots":
             screenshots = search_interface.search_game_screenshots(
@@ -251,7 +251,7 @@ def semantic_search_tool(
                 if len(quartiles) > 3:
                     print(f"[VECTOR SIMILARITY DEBUG] {score_type.title()} Quartiles: Q1={quartiles[q1_idx]:.4f}, Q3={quartiles[q3_idx]:.4f}")
                 
-                # Store debug info for UI display
+                # Store debug info for UI display (context-aware)
                 debug_info = {
                     "query": query,
                     "content_type": content_type,
@@ -268,11 +268,10 @@ def semantic_search_tool(
                         "high": quartiles[q1_idx],
                         "medium": quartiles[q3_idx]
                     }
-                st.session_state.vector_debug_info.append(debug_info)
                 
-                # Keep only the last 10 debug entries to prevent memory issues
-                if len(st.session_state.vector_debug_info) > 10:
-                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
+                # Initialize and append debug info (context-aware)
+                ExecutionContext.initialize_session_state_key("vector_debug_info", [])
+                ExecutionContext.append_to_session_list("vector_debug_info", debug_info, max_length=10)
             
         else:  # both
             all_results = search_interface.search_all_game_content(
@@ -376,7 +375,7 @@ def semantic_search_tool(
                     else:
                         print(f"[VECTOR SIMILARITY DEBUG] Suggested cutoffs: High relevance < {cutoff_50:.4f}, Medium relevance < {cutoff_75:.4f}")
                 
-                # Store debug info for UI display (combined results)
+                # Store debug info for UI display (combined results) (context-aware)
                 debug_info = {
                     "query": query,
                     "content_type": content_type,
@@ -399,11 +398,9 @@ def semantic_search_tool(
                         "medium": cutoff_75
                     }
                 
-                st.session_state.vector_debug_info.append(debug_info)
-                
-                # Keep only the last 10 debug entries to prevent memory issues
-                if len(st.session_state.vector_debug_info) > 10:
-                    st.session_state.vector_debug_info = st.session_state.vector_debug_info[-10:]
+                # Initialize and append debug info (context-aware)
+                ExecutionContext.initialize_session_state_key("vector_debug_info", [])
+                ExecutionContext.append_to_session_list("vector_debug_info", debug_info, max_length=10)
         
         return result
         

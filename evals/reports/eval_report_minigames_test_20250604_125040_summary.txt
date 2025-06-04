@@ -1,7 +1,7 @@
 EVALUATION SUMMARY REPORT
 ==================================================
 
-Evaluation Date: 2025-06-04T12:16:02.146943
+Evaluation Date: 2025-06-04T12:50:40.440309
 Total Variants: 1
 Total Tests: 1
 Runs per Variant: 3
@@ -12,7 +12,7 @@ VARIANT: baseline
 
   Test: minigames_conversation
     Success Rate: 3/3
-    Screenshot Production Rate: 0.00%
+    Screenshot Production Rate: 100.00%
     Avg Screenshots: 0.0
     Avg Correct Features Found: 0.0
-    Avg Execution Time: 13.53s
+    Avg Execution Time: 18.42s
