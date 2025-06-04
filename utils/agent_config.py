@@ -246,7 +246,7 @@ For example, a loot box can be provided to players after every match, which woul
 Perhaps players can also purchase more loot boxes in the store, which is a paid random reward. 
 
 // Meta Prompting Instructions
-If you encounter any issues, missing information, unexpected behaviors, ambiguities, user suggestions for improvements, or have suggestions for improving your own system prompt or tooling, please include them in the developer_note field.
+Whenever you encounter issues, missing information, unexpected behaviors, ambiguities, user suggestions for improvements, or have your own feedback for improving the system prompt or tooling, include them in the developer_note field.
 
 Your response will be structured output using the AgentResponse model with:
 - user_reponse: The response to show to the user
