@@ -7,7 +7,8 @@ from utils import (
     initialize_session_state,
     parse_agent_response,
     log_developer_note,
-    display_developer_notes_panel
+    display_developer_notes_panel,
+    show_video_player
 )
 
 # Configure page to use wide layout
@@ -241,6 +242,10 @@ def main():
     # Show fullscreen dialog if in fullscreen mode
     if st.session_state.fullscreen_mode:
         show_fullscreen_image()
+    
+    # Show video player dialog if in video player mode
+    if st.session_state.get("video_player_mode", False):
+        show_video_player()
 
     # Create main layout: chat on left (30%), screenshot drawer on right (70%)
     chat_col, screenshot_col = st.columns([3, 7], gap="medium")  # Added gap parameter for better spacing

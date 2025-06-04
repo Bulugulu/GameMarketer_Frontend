@@ -13,10 +13,12 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     The function handles path resolution by combining the database's relative paths 
     (e.g., "uploads/folder/file.png") with the base "screenshots" directory to create 
     full paths (e.g., "screenshots/uploads/folder/file.png").
+    
+    Enhanced with video tracking: now includes video information for each screenshot.
     """
     print(f"[DEBUG] retrieve_screenshots_for_display called with {len(screenshot_ids)} screenshot IDs")
     
-    # Get screenshot paths from database with feature information
+    # Enhanced query to include video information
     query = f"""
     SELECT 
         s.screenshot_id::text, 
@@ -27,16 +29,30 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         s.modal_name, 
         s.elements,
         COALESCE(f.name, 'Untagged Screenshots') as feature_name,
-        sc.screen_name
+        sc.screen_name,
+        -- Video tracking fields
+        s.video_timestamp_seconds,
+        s.screenshot_timestamp,
+        v.video_id::text,
+        v.video_path,
+        v.title as video_title,
+        v.youtube_url,
+        v.duration_seconds,
+        -- Alternative video mapping via cross-reference table
+        svx.video_timestamp_seconds as xref_timestamp,
+        svx.confidence as xref_confidence
     FROM screenshots s
     LEFT JOIN screenshot_feature_xref sfx ON s.screenshot_id = sfx.screenshot_id
     LEFT JOIN features_game f ON sfx.feature_id = f.feature_id
     LEFT JOIN screens sc ON s.screen_id = sc.screen_id
+    -- Join with video cross-reference table (for many-to-many relationship)
+    LEFT JOIN screenshot_video_xref svx ON s.screenshot_id = svx.screenshot_id
+    LEFT JOIN videos v ON svx.video_id = v.video_id
     WHERE s.screenshot_id IN ('{"','".join(screenshot_ids)}')
     ORDER BY COALESCE(f.name, 'Untagged Screenshots'), s.caption
     """
     
-    print(f"[DEBUG] Executing SQL query for screenshot retrieval")
+    print(f"[DEBUG] Executing SQL query for screenshot retrieval with video tracking")
     
     try:
         result = run_sql_query(query)
@@ -63,7 +79,7 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         rows = result["rows"]
         print(f"[DEBUG] Retrieved {len(rows)} rows with columns: {columns}")
         
-        # Group screenshots by feature_name
+        # Group screenshots by feature_name, handling video duplicates
         screenshot_groups = {}
         processed_count = 0
         
@@ -71,9 +87,10 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
             try:
                 row_dict = dict(zip(columns, row))
                 feature_name = row_dict.get("feature_name") or "Unknown Feature"
+                screenshot_id = row_dict.get("screenshot_id", "")
                 
                 if feature_name not in screenshot_groups:
-                    screenshot_groups[feature_name] = []
+                    screenshot_groups[feature_name] = {}
                 
                 # Get the path from database (relative path)
                 screenshot_path = row_dict.get("path", "")
@@ -101,45 +118,104 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                             valid_path = alternative_full_path
                             print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
                 
-                # If valid path exists, add to the group
-                if valid_path and os.path.exists(valid_path):
-                    screenshot_groups[feature_name].append({
+                # Only process valid paths
+                if not (valid_path and os.path.exists(valid_path)):
+                    print(f"[WARNING] Screenshot path not found: {valid_path}")
+                    continue
+                
+                # Handle video information - determine the best video source
+                video_info = None
+                
+                # Check if we have video information
+                video_path = row_dict.get("video_path")
+                video_timestamp = row_dict.get("video_timestamp_seconds") or row_dict.get("xref_timestamp")
+                
+                if video_path and video_timestamp is not None:
+                    # Construct full video path by joining with base screenshots directory
+                    full_video_path = os.path.join("screenshots", video_path)
+                    
+                    print(f"[DEBUG] Video info found for screenshot {screenshot_id}:")
+                    print(f"  - Raw video_path from DB: {video_path}")
+                    print(f"  - Full video path: {full_video_path}")
+                    print(f"  - Video timestamp: {video_timestamp}")
+                    print(f"  - File exists: {os.path.exists(full_video_path)}")
+                    
+                    video_info = {
+                        "video_id": row_dict.get("video_id"),
+                        "video_path": full_video_path,
+                        "video_timestamp_seconds": int(video_timestamp),
+                        "video_title": row_dict.get("video_title"),
+                        "youtube_url": row_dict.get("youtube_url"),
+                        "duration_seconds": row_dict.get("duration_seconds"),
+                        "confidence": row_dict.get("xref_confidence", 1.0)
+                    }
+                
+                # Check if this screenshot is already processed (due to multiple video mappings)
+                if screenshot_id in screenshot_groups[feature_name]:
+                    # If we have better video info, update it
+                    existing_screenshot = screenshot_groups[feature_name][screenshot_id]
+                    if video_info and (not existing_screenshot.get("video_info") or 
+                                     video_info.get("confidence", 1.0) > existing_screenshot.get("video_info", {}).get("confidence", 0.0)):
+                        existing_screenshot["video_info"] = video_info
+                else:
+                    # Add new screenshot entry
+                    screenshot_groups[feature_name][screenshot_id] = {
                         "path": valid_path,
                         "caption": row_dict.get("caption", ""),
-                        "screenshot_id": row_dict.get("screenshot_id", ""),
+                        "screenshot_id": screenshot_id,
                         "elements": row_dict.get("elements", {}),
-                        "screen_name": row_dict.get("screen_name", "")
-                    })
+                        "screen_name": row_dict.get("screen_name", ""),
+                        "video_info": video_info
+                    }
                     processed_count += 1
-                else:
-                    print(f"[WARNING] Screenshot path not found: {valid_path}")
                     
             except Exception as e:
                 print(f"[ERROR] Error processing row: {e}")
                 continue
         
-        print(f"[DEBUG] Processed {processed_count} screenshots into {len(screenshot_groups)} feature groups")
+        print(f"[DEBUG] Processed {processed_count} unique screenshots into {len(screenshot_groups)} feature groups")
         
         # Prepare screenshots for UI
         screenshots_for_ui = []
         retrieved_entries_info = []
         
-        for feature_name, screenshots in screenshot_groups.items():
+        for feature_name, screenshot_dict in screenshot_groups.items():
+            screenshots = list(screenshot_dict.values())
             if not screenshots:
                 continue
+            
+            # Prepare data for UI including video info
+            screenshot_data = []
+            for s in screenshots:
+                screenshot_entry = {
+                    "path": s["path"],
+                    "caption": s["caption"],
+                    "screenshot_id": s["screenshot_id"],
+                    "elements": s["elements"],
+                    "screen_name": s["screen_name"]
+                }
                 
+                # Add video information if available
+                if s.get("video_info"):
+                    screenshot_entry["video_info"] = s["video_info"]
+                
+                screenshot_data.append(screenshot_entry)
+            
             image_paths = [s["path"] for s in screenshots]
             
             screenshots_for_ui.append({
                 "group_title": feature_name,
                 "image_paths": image_paths,
-                "group_type": "feature"  # Add identifier for UI handling
+                "group_type": "feature",  # Add identifier for UI handling
+                "screenshot_data": screenshot_data  # Include full screenshot data with video info
             })
             
             # Prepare info for agent
+            video_count = sum(1 for s in screenshots if s.get("video_info"))
             retrieved_entries_info.append({
                 "feature_name": feature_name,
                 "screenshot_count": len(screenshots),
+                "video_enabled_count": video_count,
                 "captions": [s["caption"] for s in screenshots if s.get("caption")],
                 "elements": [s["elements"] for s in screenshots if s.get("elements")],
                 "screen_names": list(set([s["screen_name"] for s in screenshots if s.get("screen_name")]))
