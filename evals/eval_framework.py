@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field, asdict
 import statistics
+import re
 from pathlib import Path
 
 # Add parent directory to path to import utils
@@ -13,7 +14,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.agent_config import sql_analysis_agent, AgentResponse
 from agents import Runner, Agent
-import re
+from utils.context_detector import ExecutionContext
 
 @dataclass
 class TestResult:
@@ -189,6 +190,9 @@ class EvalFramework:
             # Import the agent tools here to avoid import issues
             from utils.agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool, semantic_search_tool
             
+            # Clear session state before test
+            ExecutionContext._mock_session_state.clear()
+            
             # Create a new agent with the variant prompt instead of copying
             modified_agent = Agent(
                 name="SQL Analysis Agent (Eval Variant)",
@@ -229,10 +233,36 @@ class EvalFramework:
             
             result.raw_response = full_response
             
-            # Extract metrics from the response
+            # Extract metrics from the response AND tool execution results
             metrics = self.extract_metrics_from_response(full_response, test_config)
-            result.produced_screenshots = metrics["produced_screenshots"]
-            result.screenshot_count = metrics["screenshot_count"]
+            
+            # Check if screenshots were actually retrieved by examining session state
+            screenshots_data = ExecutionContext.get_session_state_value("screenshots_to_display", None)
+            if screenshots_data:
+                result.produced_screenshots = True
+                # Count actual screenshots from the data structure
+                total_screenshots = 0
+                if isinstance(screenshots_data, list):
+                    # screenshots_data is a list of groups, each group contains screenshot_data
+                    for group in screenshots_data:
+                        if isinstance(group, dict):
+                            # Count screenshots in screenshot_data array
+                            if "screenshot_data" in group:
+                                total_screenshots += len(group["screenshot_data"])
+                            # Alternative: count image_paths if screenshot_data not available
+                            elif "image_paths" in group:
+                                total_screenshots += len(group["image_paths"])
+                    result.screenshot_count = total_screenshots
+                else:
+                    result.screenshot_count = len(screenshots_data) if screenshots_data else 0
+                
+                print(f"[EVAL] Successfully retrieved {result.screenshot_count} screenshots across {len(screenshots_data)} groups")
+            else:
+                # Fall back to text pattern detection
+                result.produced_screenshots = metrics["produced_screenshots"]
+                result.screenshot_count = metrics["screenshot_count"]
+                print(f"[EVAL] No screenshots in session state, using text patterns: {result.produced_screenshots}")
+            
             result.avg_screenshot_relevance = metrics["avg_screenshot_relevance"]
             result.avg_feature_relevance = metrics["avg_feature_relevance"]
             result.found_feature_ids = metrics["found_feature_ids"]
