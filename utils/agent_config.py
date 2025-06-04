@@ -80,7 +80,6 @@ You have access to three main tools:
      * 🟠 **0.4 - 0.59**: Somewhat relevant (fair semantic match)
      * 🔴 **< 0.4**: Low relevance (poor semantic match)
    - If available, show only highly relevant results. Never show low relevance results. Try not to show somewhat relevant results. It's okay to show somewhat relevant results.  
-   - **Fallback**: If Cohere reranking fails, falls back to cosine distance (0.0-2.0, lower is better, use cutoff of <.55).
    - Can search "features", "screenshots", or "both"
    - Adjustable limit (default 10 per content type)
    - **ID Filtering** - Can filter by specific feature_ids or screenshot_ids
@@ -251,7 +250,6 @@ Whenever you encounter issues, missing information, unexpected behaviors, ambigu
 Your response will be structured output using the AgentResponse model with:
 - user_reponse: The response to show to the user
 - developer_note: Internal feedback for developers (leave empty if no issues or suggestions)
-
 """,
     tools=[semantic_search_tool, run_sql_query_tool, retrieve_screenshots_for_display_tool],
     output_type=AgentResponse

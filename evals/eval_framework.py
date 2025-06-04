@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.agent_config import sql_analysis_agent, AgentResponse
 from agents import Runner, Agent
 from utils.context_detector import ExecutionContext
+from database_tool import run_sql_query
 
 @dataclass
 class TestResult:
@@ -33,6 +34,10 @@ class TestResult:
     error: Optional[str] = None
     raw_response: Optional[str] = None
     developer_note: Optional[str] = None
+    # New fields for retrieval rate calculation
+    total_available_screenshots: int = 0
+    retrieval_rate: float = 0.0
+    screenshots_retrieved_for_correct_features: int = 0
 
 @dataclass
 class VariantResults:
@@ -65,6 +70,10 @@ class VariantResults:
             "avg_feature_relevance": safe_mean([r.avg_feature_relevance for r in successful_runs if r.avg_feature_relevance > 0]),
             "avg_correct_features_found": safe_mean([r.correct_features_found for r in successful_runs]),
             "avg_execution_time": safe_mean([r.execution_time for r in successful_runs]),
+            # New retrieval rate metrics
+            "avg_total_available_screenshots": safe_mean([r.total_available_screenshots for r in successful_runs if r.total_available_screenshots > 0]),
+            "avg_retrieval_rate": safe_mean([r.retrieval_rate for r in successful_runs if r.retrieval_rate > 0]),
+            "avg_screenshots_retrieved_for_correct_features": safe_mean([r.screenshots_retrieved_for_correct_features for r in successful_runs]),
         }
 
 class EvalFramework:
@@ -173,6 +182,9 @@ class EvalFramework:
             total_correct_features=len(test_config.get("correct_features", []))
         )
         
+        # Track tasks for proper cleanup
+        created_tasks = []
+        
         try:
             # Import the agent tools here to avoid import issues
             from utils.agent_tools import run_sql_query_tool, retrieve_screenshots_for_display_tool, semantic_search_tool
@@ -203,20 +215,28 @@ class EvalFramework:
                 else:
                     agent_input = step
                 
-                # Run the agent
-                agent_result = await Runner.run(modified_agent, agent_input)
-                
-                if isinstance(agent_result.final_output, AgentResponse):
-                    response = agent_result.final_output.user_reponse
-                    result.developer_note = agent_result.final_output.developer_note
-                else:
-                    response = str(agent_result.final_output)
-                
-                full_response += f"\n{response}"
-                
-                # Update conversation history
-                conversation_history.append({"role": "user", "content": step})
-                conversation_history.append({"role": "assistant", "content": response})
+                # Run the agent with proper task management
+                try:
+                    # Run the agent
+                    agent_result = await Runner.run(modified_agent, agent_input)
+                    
+                    if isinstance(agent_result.final_output, AgentResponse):
+                        response = agent_result.final_output.user_reponse
+                        result.developer_note = agent_result.final_output.developer_note
+                    else:
+                        response = str(agent_result.final_output)
+                    
+                    full_response += f"\n{response}"
+                    
+                    # Update conversation history
+                    conversation_history.append({"role": "user", "content": step})
+                    conversation_history.append({"role": "assistant", "content": response})
+                    
+                except Exception as step_error:
+                    print(f"[EVAL] Error in conversation step '{step}': {step_error}")
+                    response = f"Error: {step_error}"
+                    full_response += f"\nError: {step_error}"
+                    break
             
             result.raw_response = full_response
             
@@ -368,8 +388,28 @@ class EvalFramework:
                 print(f"[EVAL] Found: {list(found_feature_ids)}")
                 print(f"[EVAL] Matches: {list(correct_features.intersection(found_feature_ids))}")
             
+            # Calculate retrieval rate if enabled in test config
+            if test_config.get("expected_behaviors", {}).get("calculate_retrieval_rate", False):
+                await self._calculate_retrieval_rate(result, test_config, found_feature_ids, screenshots_data)
+            
         except Exception as e:
             result.error = str(e)
+            print(f"[EVAL] Test execution error: {e}")
+        
+        finally:
+            # Clean up any created tasks to prevent recursion
+            for task in created_tasks:
+                if not task.done():
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                    except Exception:
+                        pass  # Ignore cleanup errors
+            
+            # Clear session state after each test to prevent accumulation
+            ExecutionContext._mock_session_state.clear()
         
         result.execution_time = (datetime.now() - start_time).total_seconds()
         return result
@@ -388,8 +428,38 @@ class EvalFramework:
             # Run the test multiple times
             for run_num in range(runs_per_variant):
                 print(f"Running {test_name} - Variant: {variant_name} - Run {run_num + 1}/{runs_per_variant}")
-                result = await self.run_single_test(test, variant_name, variant_prompt, run_num + 1)
-                variant_result.runs.append(result)
+                
+                try:
+                    # Add timeout to prevent hanging (default 5 minutes per test)
+                    result = await asyncio.wait_for(
+                        self.run_single_test(test, variant_name, variant_prompt, run_num + 1),
+                        timeout=300  # 5 minutes timeout
+                    )
+                    variant_result.runs.append(result)
+                    
+                except asyncio.TimeoutError:
+                    print(f"[EVAL] Test {test_name} run {run_num + 1} timed out after 5 minutes")
+                    timeout_result = TestResult(
+                        test_name=test_name,
+                        variant_name=variant_name,
+                        run_number=run_num + 1,
+                        total_correct_features=len(test_config.get("correct_features", [])),
+                        error="Test timed out after 5 minutes",
+                        execution_time=300.0
+                    )
+                    variant_result.runs.append(timeout_result)
+                    
+                except Exception as e:
+                    print(f"[EVAL] Test {test_name} run {run_num + 1} failed with error: {e}")
+                    error_result = TestResult(
+                        test_name=test_name,
+                        variant_name=variant_name,
+                        run_number=run_num + 1,
+                        total_correct_features=len(test_config.get("correct_features", [])),
+                        error=str(e),
+                        execution_time=0.0
+                    )
+                    variant_result.runs.append(error_result)
             
             variant_results[test_name] = variant_result
         
@@ -399,15 +469,48 @@ class EvalFramework:
         """Run all evaluations for all variants"""
         print(f"Starting evaluation with {len(self.config['variants'])} variants")
         
-        for variant in self.config["variants"]:
-            variant_name = variant["name"]
-            variant_path = variant["path"]
+        try:
+            for variant in self.config["variants"]:
+                variant_name = variant["name"]
+                variant_path = variant["path"]
+                
+                print(f"\nEvaluating variant: {variant_name}")
+                variant_results = await self.run_variant_tests(variant_name, variant_path)
+                self.results[variant_name] = variant_results
             
-            print(f"\nEvaluating variant: {variant_name}")
-            variant_results = await self.run_variant_tests(variant_name, variant_path)
-            self.results[variant_name] = variant_results
-        
-        print("\nEvaluation complete!")
+            print("\nEvaluation complete!")
+            
+        finally:
+            # Comprehensive cleanup to ensure proper termination
+            print("[EVAL] Performing cleanup...")
+            try:
+                # Clear all session state
+                ExecutionContext._mock_session_state.clear()
+                
+                # Close any potential database connections
+                try:
+                    from database_tool import close_db_connection
+                    close_db_connection()
+                    print("[EVAL] Database connections closed")
+                except (ImportError, AttributeError):
+                    # close_db_connection might not exist, that's okay
+                    pass
+                
+                # Clean up ChromaDB connections if they exist
+                try:
+                    from ChromaDB.vector_search_interface import GameDataSearchInterface
+                    # Force garbage collection of any search interface instances
+                    import gc
+                    gc.collect()
+                    print("[EVAL] ChromaDB cleanup completed")
+                except ImportError:
+                    pass
+                
+                print("[EVAL] Cleanup completed successfully")
+                
+            except Exception as cleanup_error:
+                print(f"[EVAL] Warning: Cleanup encountered an error: {cleanup_error}")
+                # Don't raise the cleanup error, just log it
     
     def generate_report(self, output_path: str):
         """Generate a comprehensive report of all evaluation results"""
@@ -462,9 +565,101 @@ class EvalFramework:
                         if metrics.get('avg_feature_relevance'):
                             f.write(f"    Avg Feature Relevance: {metrics['avg_feature_relevance']:.3f}\n")
                         f.write(f"    Avg Correct Features Found: {metrics['avg_correct_features_found']:.1f}\n")
+                        if metrics.get('avg_total_available_screenshots'):
+                            f.write(f"    Avg Total Available Screenshots: {metrics['avg_total_available_screenshots']:.1f}\n")
+                        if metrics.get('avg_retrieval_rate'):
+                            f.write(f"    Avg Retrieval Rate: {metrics['avg_retrieval_rate']:.3f} ({metrics['avg_retrieval_rate']:.1%})\n")
+                        if metrics.get('avg_screenshots_retrieved_for_correct_features'):
+                            f.write(f"    Avg Screenshots Retrieved for Correct Features: {metrics['avg_screenshots_retrieved_for_correct_features']:.1f}\n")
                         f.write(f"    Avg Execution Time: {metrics['avg_execution_time']:.2f}s\n")
         
         print(f"\nReports saved to:\n  - {output_path}\n  - {summary_path}")
+
+    async def _calculate_retrieval_rate(self, result: TestResult, test_config: Dict, found_feature_ids: set, screenshots_data: List):
+        """Calculate screenshot retrieval rate for correct features"""
+        try:
+            correct_features = set(test_config.get("correct_features", []))
+            
+            if not correct_features:
+                print("[EVAL] No correct features specified for retrieval rate calculation")
+                return
+            
+            # Query database for total screenshots available for correct features
+            feature_ids_str = "', '".join(correct_features)
+            query = f"""
+            SELECT feature_id, COUNT(*) as screenshot_count
+            FROM screenshot_feature_xref 
+            WHERE feature_id IN ('{feature_ids_str}')
+            GROUP BY feature_id
+            """
+            
+            print(f"[EVAL] Querying database for screenshot counts: {query}")
+            
+            # Execute the query using the underlying SQL function
+            query_result = run_sql_query(query)
+            
+            total_available = 0
+            if query_result and 'rows' in query_result:
+                for row in query_result['rows']:
+                    if len(row) >= 2:
+                        feature_id = str(row[0])
+                        count = int(row[1])
+                        total_available += count
+                        print(f"[EVAL] Feature {feature_id} has {count} screenshots available")
+            
+            result.total_available_screenshots = total_available
+            
+            # Count screenshots retrieved for correct features
+            screenshots_for_correct_features = 0
+            
+            if screenshots_data:
+                # Get the intersection of found features and correct features
+                correctly_found_features = correct_features.intersection(found_feature_ids)
+                
+                if correctly_found_features:
+                    # Query for screenshots that belong to the correctly found features and were actually retrieved
+                    retrieved_screenshot_ids = []
+                    
+                    # Extract screenshot IDs from the retrieved data
+                    for group in screenshots_data:
+                        if isinstance(group, dict) and "screenshot_data" in group:
+                            for screenshot in group["screenshot_data"]:
+                                if isinstance(screenshot, dict) and "screenshot_id" in screenshot:
+                                    retrieved_screenshot_ids.append(screenshot["screenshot_id"])
+                    
+                    if retrieved_screenshot_ids:
+                        # Query to count how many of the retrieved screenshots belong to correct features
+                        screenshot_ids_str = "', '".join(retrieved_screenshot_ids)
+                        feature_match_query = f"""
+                        SELECT COUNT(*) as matching_count
+                        FROM screenshot_feature_xref 
+                        WHERE screenshot_id IN ('{screenshot_ids_str}')
+                        AND feature_id IN ('{feature_ids_str}')
+                        """
+                        
+                        match_result = run_sql_query(feature_match_query)
+                        
+                        if match_result and 'rows' in match_result and match_result['rows']:
+                            screenshots_for_correct_features = int(match_result['rows'][0][0])
+            
+            result.screenshots_retrieved_for_correct_features = screenshots_for_correct_features
+            
+            # Calculate retrieval rate
+            if total_available > 0:
+                result.retrieval_rate = screenshots_for_correct_features / total_available
+            else:
+                result.retrieval_rate = 0.0
+            
+            print(f"[EVAL] Retrieval rate calculation:")
+            print(f"[EVAL]   Screenshots retrieved for correct features: {screenshots_for_correct_features}")
+            print(f"[EVAL]   Total screenshots available for correct features: {total_available}")
+            print(f"[EVAL]   Retrieval rate: {result.retrieval_rate:.3f} ({result.retrieval_rate:.1%})")
+            
+        except Exception as e:
+            print(f"[EVAL] Error calculating retrieval rate: {e}")
+            result.total_available_screenshots = 0
+            result.retrieval_rate = 0.0
+            result.screenshots_retrieved_for_correct_features = 0
 
 async def main():
     """Main entry point for running evaluations"""
@@ -473,15 +668,66 @@ async def main():
         sys.exit(1)
     
     config_path = sys.argv[1]
-    framework = EvalFramework(config_path)
     
-    await framework.run_all_evaluations()
-    
-    # Generate report
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = f"evals/reports/eval_report_{timestamp}.json"
-    os.makedirs(os.path.dirname(report_path), exist_ok=True)
-    framework.generate_report(report_path)
+    try:
+        # Run evaluation in a separate task group to prevent recursion
+        async def run_evaluation():
+            framework = EvalFramework(config_path)
+            await framework.run_all_evaluations()
+            
+            # Generate report
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            config_name = os.path.splitext(os.path.basename(config_path))[0]
+            report_path = f"evals/reports/eval_report_{config_name}_{timestamp}.json"
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            framework.generate_report(report_path)
+            return True
+        
+        # Run with timeout and proper cleanup
+        result = await asyncio.wait_for(run_evaluation(), timeout=1800)  # 30 minutes max
+        
+        if result:
+            print("[EVAL] All evaluations completed successfully!")
+        
+    except asyncio.TimeoutError:
+        print("[EVAL] Evaluation timed out after 30 minutes")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\n[EVAL] Evaluation interrupted by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"[EVAL] Evaluation failed with error: {e}")
+        sys.exit(1)
+    finally:
+        # Force cleanup of all pending tasks to prevent recursion
+        print("[EVAL] Cleaning up async tasks...")
+        try:
+            # Get all tasks and cancel them safely
+            pending_tasks = [task for task in asyncio.all_tasks() if not task.done()]
+            
+            if pending_tasks:
+                print(f"[EVAL] Cancelling {len(pending_tasks)} pending tasks...")
+                
+                # Cancel tasks without recursion
+                for task in pending_tasks:
+                    task.cancel()
+                
+                # Wait briefly for cancellation to complete
+                try:
+                    await asyncio.wait(pending_tasks, timeout=2.0, return_when=asyncio.ALL_COMPLETED)
+                except asyncio.TimeoutError:
+                    print("[EVAL] Some tasks did not cancel within timeout")
+                except Exception as cleanup_error:
+                    print(f"[EVAL] Task cleanup error: {cleanup_error}")
+            
+            print("[EVAL] Task cleanup completed")
+            
+        except Exception as final_cleanup_error:
+            print(f"[EVAL] Final cleanup error: {final_cleanup_error}")
+        
+        print("[EVAL] Exiting evaluation framework")
+        # Force exit to ensure termination
+        os._exit(0)  # Use os._exit to force immediate termination
 
 if __name__ == "__main__":
     asyncio.run(main()) 
