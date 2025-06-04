@@ -77,126 +77,34 @@ def show_video_player():
         try:
             st.success(f"✅ Video found at: `{working_path}`")
             
-            # Method 1: Try HTML5 video with JavaScript for timestamp seeking
-            st.markdown("### 🎬 Auto-Seek Video Player")
+            # Use Streamlit's video player with automatic timestamp seeking
+            st.markdown(f"### 🎬 Video Player - {video_title}")
             
-            # Convert video path to a web-accessible format
-            relative_video_path = working_path.replace("\\", "/")
-            
-            # Create HTML5 video player with automatic timestamp seeking
-            video_html = f"""
-            <div style="width: 100%; margin: 20px 0;">
-                <video id="timestampVideo" width="100%" height="400" controls preload="metadata">
-                    <source src="{relative_video_path}" type="video/mp4">
-                    <p>Your browser doesn't support HTML5 video. Here is a <a href="{relative_video_path}">link to the video</a> instead.</p>
-                </video>
-                
-                <div style="background-color: #e1f5fe; padding: 10px; margin-top: 10px; border-radius: 5px; border-left: 4px solid #01579b;">
-                    <strong>⏰ Target timestamp: {format_timestamp(timestamp)}</strong>
-                    <p style="margin: 5px 0 0 0; font-size: 0.9em; color: #555;">
-                        Video will attempt to seek to {timestamp} seconds automatically.
-                    </p>
-                </div>
-                
-                <button onclick="seekToTimestamp()" style="margin-top: 10px; padding: 8px 16px; background-color: #1976d2; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                    🎯 Seek to {format_timestamp(timestamp)}
-                </button>
-            </div>
-            
-            <script>
-                function seekToTimestamp() {{
-                    const video = document.getElementById('timestampVideo');
-                    if (video) {{
-                        video.currentTime = {timestamp};
-                        video.play();
-                        console.log('Manual seek to {timestamp} seconds');
-                    }}
-                }}
-                
-                // Auto-seek when video is ready
-                document.addEventListener('DOMContentLoaded', function() {{
-                    const video = document.getElementById('timestampVideo');
-                    if (video) {{
-                        console.log('Setting up video timestamp to {timestamp} seconds');
-                        
-                        // Multiple approaches to ensure seeking works
-                        let hasSeek = false;
-                        
-                        video.addEventListener('loadedmetadata', function() {{
-                            if (!hasSeek) {{
-                                console.log('Video metadata loaded, seeking to {timestamp}');
-                                video.currentTime = {timestamp};
-                                hasSeek = true;
-                            }}
-                        }});
-                        
-                        video.addEventListener('canplay', function() {{
-                            if (!hasSeek && video.currentTime < 1) {{
-                                console.log('Video can play, seeking to {timestamp}');
-                                video.currentTime = {timestamp};
-                                hasSeek = true;
-                            }}
-                        }});
-                        
-                        // Delayed attempt
-                        setTimeout(function() {{
-                            if (!hasSeek && video.readyState >= 2) {{
-                                console.log('Delayed seek to {timestamp}');
-                                video.currentTime = {timestamp};
-                                hasSeek = true;
-                            }}
-                        }}, 1000);
-                        
-                        // Try immediate seek if already loaded
-                        if (video.readyState >= 1) {{
-                            video.currentTime = {timestamp};
-                            hasSeek = true;
-                        }}
-                    }}
-                }});
-            </script>
-            """
-            
-            # Display the HTML video player
-            st.html(video_html)
-            
-            # Method 2: Streamlit backup video player
-            st.markdown("### 📺 Backup Video Player")
+            # Convert timestamp to Streamlit-compatible format
+            timestamp_str = f"{timestamp}s"  # Convert seconds to "123s" format
             
             try:
-                # Try to read the video file and serve it through Streamlit
+                # First try: Load video bytes and serve through Streamlit
                 with open(working_path, 'rb') as video_file:
                     video_bytes = video_file.read()
                 
-                # Convert timestamp to Streamlit-compatible format
-                timestamp_str = f"{timestamp}s"  # Convert seconds to "123s" format
+                st.video(video_bytes, start_time=timestamp_str)
+                st.success(f"✅ **Auto-started at {format_timestamp(timestamp)}** - Video will begin at the screenshot timestamp")
                 
-                # Use Streamlit's video component with the video bytes
+            except Exception as bytes_error:
                 try:
-                    st.video(video_bytes, start_time=timestamp_str)
-                    st.success(f"✅ Video loaded with auto-seek to {format_timestamp(timestamp)}")
-                except TypeError:
-                    # Fallback if start_time is not supported in this Streamlit version
-                    st.video(video_bytes)
-                    st.info(f"⏰ Manually seek to: **{format_timestamp(timestamp)}** ({timestamp} seconds)")
-                    
-            except Exception as video_error:
-                st.warning(f"Could not load video bytes: {video_error}")
-                try:
-                    # Try with file path and timestamp
-                    timestamp_str = f"{timestamp}s"
+                    # Fallback: Use file path directly
                     st.video(working_path, start_time=timestamp_str)
-                    st.success(f"✅ Video loaded from path with auto-seek to {format_timestamp(timestamp)}")
-                except TypeError:
-                    # Fallback if start_time is not supported
-                    st.video(working_path)
-                    st.info(f"⏰ Manually seek to: **{format_timestamp(timestamp)}** ({timestamp} seconds)")
+                    st.success(f"✅ **Auto-started at {format_timestamp(timestamp)}** - Video will begin at the screenshot timestamp")
+                    
                 except Exception as path_error:
-                    st.error(f"Could not load video from path: {path_error}")
-                    st.info(f"⏰ Target timestamp: **{format_timestamp(timestamp)}** ({timestamp} seconds)")
+                    # Final fallback: Video without timestamp
+                    st.video(working_path)
+                    st.info(f"⏰ **Please manually seek to: {format_timestamp(timestamp)}** ({timestamp} seconds)")
+                    st.warning("Auto-seek not available - seek manually using video controls")
             
-            # Method 3: External player option
-            st.markdown("### 🎥 External Options")
+            # Additional controls
+            st.markdown("### 🎥 Additional Options")
             
             col1, col2, col3 = st.columns(3)
             
@@ -220,25 +128,17 @@ def show_video_player():
             
             with col2:
                 if st.button("📋 Copy Info", help="Copy video and timestamp info"):
-                    try:
-                        info_text = f"Video: {os.path.basename(working_path)}\nTimestamp: {format_timestamp(timestamp)} ({timestamp} seconds)\nPath: {working_path}"
-                        st.code(info_text, language=None)
-                        st.success("Video info shown above")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+                    info_text = f"Video: {os.path.basename(working_path)}\nTimestamp: {format_timestamp(timestamp)} ({timestamp} seconds)\nPath: {working_path}"
+                    st.code(info_text, language=None)
+                    st.success("Video info shown above")
             
             with col3:
-                # Try URL fragment approach for some browsers
-                try:
-                    video_url_with_time = f"{relative_video_path}#t={timestamp}"
-                    if st.button("🔗 Direct Link", help="Try opening with timestamp fragment"):
-                        st.markdown(f"**Direct link:** [Video at {format_timestamp(timestamp)}]({video_url_with_time})")
-                except:
-                    st.write("")  # Empty column if link generation fails
+                if st.button("🔄 Refresh Video", help="Reload the video player"):
+                    st.rerun()
             
         except Exception as e:
             st.error(f"Error loading video: {e}")
-            st.markdown("**Fallback: Video File Information**")
+            st.markdown("**Video File Information**")
             st.markdown(f"- Path: `{working_path}`")
             st.markdown(f"- Timestamp: {format_timestamp(timestamp)} ({timestamp} seconds)")
             
