@@ -70,14 +70,14 @@ class VariantResults:
 class EvalFramework:
     def __init__(self, config_path: str):
         """Initialize the evaluation framework with a config file"""
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             self.config = json.load(f)
         
         self.results: Dict[str, Dict[str, VariantResults]] = {}
         
     def load_system_prompt_variant(self, variant_path: str) -> str:
         """Load a system prompt variant from file"""
-        with open(variant_path, 'r') as f:
+        with open(variant_path, 'r', encoding='utf-8') as f:
             return f.read()
     
     def extract_metrics_from_response(self, response: str, test_config: Dict) -> Dict[str, Any]:
@@ -276,35 +276,73 @@ class EvalFramework:
                             
                             # If group title is not "Untagged Screenshots", it represents a feature
                             if group_title and group_title != "Untagged Screenshots" and group_title != "Unknown Feature":
-                                # For now, we'll map feature names to IDs manually based on the semantic search results
-                                # This is more reliable than database queries in this context
-                                
                                 # Check if we have feature mapping from semantic search tool results in session state
                                 semantic_results = ExecutionContext.get_session_state_value("last_semantic_search_results", None)
                                 if semantic_results:
                                     # Look for feature matches in semantic search results
-                                    for result in semantic_results.get("results", []):
-                                        result_name = result.get("name", "").lower()
+                                    features_from_search = semantic_results.get("features", [])
+                                    for search_result in features_from_search:
+                                        result_name = search_result.get("name", "").lower()
                                         group_name = group_title.lower()
                                         
-                                        # Match feature names (case-insensitive, partial matching)
-                                        if result_name in group_name or group_name in result_name:
-                                            feature_id = result.get("feature_id")
+                                        # Enhanced matching: exact, partial, and keyword matching
+                                        match_found = False
+                                        
+                                        # 1. Exact match (case-insensitive)
+                                        if result_name == group_name:
+                                            match_found = True
+                                        
+                                        # 2. Partial matching (either direction)
+                                        elif result_name in group_name or group_name in result_name:
+                                            match_found = True
+                                        
+                                        # 3. Keyword matching for events and special features
+                                        elif any(keyword in result_name for keyword in group_name.split()):
+                                            match_found = True
+                                        elif any(keyword in group_name for keyword in result_name.split()):
+                                            match_found = True
+                                        
+                                        if match_found:
+                                            feature_id = search_result.get("feature_id")
                                             if feature_id:
                                                 found_feature_ids.add(str(feature_id))
-                                                print(f"[EVAL] Matched feature via semantic search: '{group_title}' -> Feature ID {feature_id}")
+                                                print(f"[EVAL] Matched feature via semantic search: '{group_title}' -> Feature ID {feature_id} ('{search_result.get('name')}')")
                                 
-                                # Also try direct feature name mapping for known features
+                                # Enhanced direct feature name mapping for known patterns
                                 feature_name_mapping = {
-                                    "mini-games": "17",  # Based on semantic search logs showing Feature ID: 17 | Name: Mini-Games
-                                    "minigames": "17",
-                                    "mini games": "17"
+                                    # Mini-games
+                                    "mini-games": "17",
+                                    "minigames": "17", 
+                                    "mini games": "17",
+                                    
+                                    # Events (common patterns)
+                                    "sheep rescue": "1006",  # Example event mapping
+                                    "sheep rescue event": "1006",
+                                    "arcade fever": "1021",
+                                    "arcade fever event": "1021", 
+                                    "seasonal event": "1024",
+                                    
+                                    # Core features
+                                    "mine": "37",
+                                    "mining": "37",
+                                    "coins": "8",
+                                    "farming": "1",
+                                    "train": "4",
+                                    "train station": "4"
                                 }
                                 
+                                # Try direct mapping with flexible matching
+                                group_lower = group_title.lower()
                                 for name_pattern, feature_id in feature_name_mapping.items():
-                                    if name_pattern in group_title.lower():
+                                    # Check for exact match or if pattern is contained in group name
+                                    if name_pattern == group_lower or name_pattern in group_lower:
                                         found_feature_ids.add(feature_id)
                                         print(f"[EVAL] Matched feature via name mapping: '{group_title}' -> Feature ID {feature_id}")
+                                        break
+                                    # Also check reverse (group name contained in pattern for shorter group names)
+                                    elif len(group_lower) > 3 and group_lower in name_pattern:
+                                        found_feature_ids.add(feature_id)
+                                        print(f"[EVAL] Matched feature via reverse name mapping: '{group_title}' -> Feature ID {feature_id}")
                                         break
                     
                     print(f"[EVAL] Screenshot tool analysis found {len(found_feature_ids)} unique features from {len(screenshots_data)} groups")
@@ -392,12 +430,12 @@ class EvalFramework:
             report["results"][variant_name] = variant_report
         
         # Save detailed JSON report
-        with open(output_path, 'w') as f:
+        with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(report, f, indent=2)
         
         # Generate summary report
         summary_path = output_path.replace('.json', '_summary.txt')
-        with open(summary_path, 'w') as f:
+        with open(summary_path, 'w', encoding='utf-8') as f:
             f.write("EVALUATION SUMMARY REPORT\n")
             f.write("=" * 50 + "\n\n")
             f.write(f"Evaluation Date: {report['evaluation_date']}\n")

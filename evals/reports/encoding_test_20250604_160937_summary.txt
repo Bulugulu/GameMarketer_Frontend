@@ -1,0 +1,38 @@
+EVALUATION SUMMARY REPORT
+==================================================
+
+Evaluation Date: 2025-06-04T16:09:37.255426
+Total Variants: 2
+Total Tests: 2
+Runs per Variant: 1
+
+
+VARIANT: baseline
+----------------------------------------
+
+  Test: minigames_conversation
+    Success Rate: 1/1
+    Screenshot Production Rate: 100.00%
+    Avg Screenshots: 10.0
+    Avg Correct Features Found: 3.0
+    Avg Execution Time: 28.19s
+
+  Test: detailed_minigame_analysis
+    Success Rate: 1/1
+    Screenshot Production Rate: 100.00%
+    Avg Screenshots: 15.0
+    Avg Correct Features Found: 0.0
+    Avg Execution Time: 38.34s
+
+VARIANT: enhanced_minigame_focus
+----------------------------------------
+
+  Test: minigames_conversation
+    Success Rate: 1/1
+    Screenshot Production Rate: 100.00%
+    Avg Screenshots: 0.0
+    Avg Correct Features Found: 0.0
+    Avg Execution Time: 13.36s
+
+  Test: detailed_minigame_analysis
+    All runs failed!

@@ -122,6 +122,30 @@ async def run_evaluation(config_path: str, args):
             import traceback
             traceback.print_exc()
         sys.exit(1)
+    
+    finally:
+        # Cleanup: Cancel any remaining tasks and close connections
+        try:
+            # Get the current event loop
+            loop = asyncio.get_event_loop()
+            
+            # Cancel all pending tasks
+            pending_tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
+            if pending_tasks:
+                print(f"[CLEANUP] Cancelling {len(pending_tasks)} pending tasks...")
+                for task in pending_tasks:
+                    task.cancel()
+                
+                # Wait for tasks to be cancelled
+                await asyncio.gather(*pending_tasks, return_exceptions=True)
+            
+            # Give a moment for connections to close properly
+            await asyncio.sleep(0.1)
+            
+        except Exception as cleanup_error:
+            if args.verbose:
+                print(f"[CLEANUP] Warning: Cleanup error: {cleanup_error}")
+            pass
 
 if __name__ == "__main__":
     main() 
