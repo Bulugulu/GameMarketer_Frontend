@@ -402,6 +402,9 @@ def semantic_search_tool(
                 ExecutionContext.initialize_session_state_key("vector_debug_info", [])
                 ExecutionContext.append_to_session_list("vector_debug_info", debug_info, max_length=10)
         
+        # Store the complete results in session state for evaluation framework access
+        ExecutionContext.set_session_state_value("last_semantic_search_results", result)
+        
         return result
         
     except Exception as e:
