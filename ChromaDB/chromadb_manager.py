@@ -65,7 +65,7 @@ class ChromaDBManager:
         return features_collection, screenshots_collection
     
     def load_feature_embeddings_from_json(self, json_file):
-        """Load feature embeddings from JSON file into ChromaDB"""
+        """Load feature embeddings from JSON file into ChromaDB with enhanced metadata"""
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
@@ -90,6 +90,7 @@ class ChromaDBManager:
             embeddings.append(feature['embedding'])
             documents.append(feature.get('combined_text', ''))
             
+            # Enhanced metadata for change detection and tracking
             metadata = {
                 "type": "feature",
                 "feature_id": str(feature['feature_id']),
@@ -97,29 +98,66 @@ class ChromaDBManager:
                 "description": feature.get('description', ''),
                 "game_id": feature.get('game_id', ''),
                 "token_count": feature.get('actual_tokens', 0),
-                "created_at": data.get('metadata', {}).get('generated_at', '')
+                "created_at": data.get('metadata', {}).get('generated_at', ''),
+                
+                # Enhanced fields for change detection
+                "content_hash": feature.get('content_hash', ''),
+                "embedding_generated_at": feature.get('embedding_generated_at', ''),
+                "last_updated": feature.get('updated_at', feature.get('created_at', '')),
+                "embedding_dimensions": feature.get('embedding_dimension', len(feature.get('embedding', []))),
+                "model": feature.get('model', 'text-embedding-3-large'),
+                "custom_dimensions": feature.get('dimensions'),
+                
+                # Processing metadata
+                "generation_attempts": feature.get('attempts', 1),
+                "token_breakdown": str(feature.get('token_breakdown', {})),  # Convert dict to string for ChromaDB
+                "actual_tokens": feature.get('actual_tokens', 0),
+                "processing_success": feature.get('success', False)
             }
+            
+            # Only include non-None values in metadata (ChromaDB doesn't like None values)
+            metadata = {k: v for k, v in metadata.items() if v is not None}
             metadatas.append(metadata)
         
         # Add to collection in batches
         batch_size = 100
+        total_added = 0
+        
         for i in range(0, len(ids), batch_size):
             batch_ids = ids[i:i + batch_size]
             batch_embeddings = embeddings[i:i + batch_size]
             batch_documents = documents[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size]
             
-            collection.add(
-                ids=batch_ids,
-                embeddings=batch_embeddings,
-                documents=batch_documents,
-                metadatas=batch_metadatas
-            )
+            try:
+                collection.add(
+                    ids=batch_ids,
+                    embeddings=batch_embeddings,
+                    documents=batch_documents,
+                    metadatas=batch_metadatas
+                )
+                total_added += len(batch_ids)
+                print(f"Added batch {i//batch_size + 1}: {len(batch_ids)} features")
+            except Exception as e:
+                print(f"Error adding batch {i//batch_size + 1}: {str(e)}")
+                # Try to add individually to identify problematic features
+                for j, (feature_id, embedding, document, metadata) in enumerate(zip(batch_ids, batch_embeddings, batch_documents, batch_metadatas)):
+                    try:
+                        collection.add(
+                            ids=[feature_id],
+                            embeddings=[embedding],
+                            documents=[document],
+                            metadatas=[metadata]
+                        )
+                        total_added += 1
+                    except Exception as individual_error:
+                        print(f"Failed to add feature {feature_id}: {str(individual_error)}")
         
-        return len(ids)
+        print(f"Successfully loaded {total_added} feature embeddings with enhanced metadata")
+        return total_added
     
     def load_screenshot_embeddings_from_json(self, json_file):
-        """Load screenshot embeddings from JSON file into ChromaDB"""
+        """Load screenshot embeddings from JSON file into ChromaDB with enhanced metadata"""
         with open(json_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
             
@@ -144,34 +182,76 @@ class ChromaDBManager:
             embeddings.append(screenshot['embedding'])
             documents.append(screenshot.get('combined_text', ''))
             
+            # Enhanced metadata for change detection and tracking
             metadata = {
                 "type": "screenshot",
                 "screenshot_id": str(screenshot['screenshot_id']),
                 "path": screenshot.get('path', ''),
                 "caption": screenshot.get('caption', ''),
+                "description": screenshot.get('description', ''),
                 "game_id": screenshot.get('game_id', ''),
                 "token_count": screenshot.get('actual_tokens', 0),
                 "capture_time": screenshot.get('capture_time', ''),
-                "created_at": data.get('metadata', {}).get('generated_at', '')
+                "created_at": data.get('metadata', {}).get('generated_at', ''),
+                
+                # Enhanced fields for change detection
+                "content_hash": screenshot.get('content_hash', ''),
+                "embedding_generated_at": screenshot.get('embedding_generated_at', ''),
+                "last_updated": screenshot.get('updated_at', screenshot.get('created_at', screenshot.get('capture_time', ''))),
+                "embedding_dimensions": screenshot.get('embedding_dimension', len(screenshot.get('embedding', []))),
+                "model": screenshot.get('model', 'text-embedding-3-large'),
+                "custom_dimensions": screenshot.get('dimensions'),
+                
+                # Processing metadata
+                "generation_attempts": screenshot.get('attempts', 1),
+                "token_breakdown": str(screenshot.get('token_breakdown', {})),  # Convert dict to string for ChromaDB
+                "actual_tokens": screenshot.get('actual_tokens', 0),
+                "processing_success": screenshot.get('success', False),
+                
+                # Screenshot-specific metadata
+                "elements_data": str(screenshot.get('elements', '')),  # Store elements data for reference
             }
+            
+            # Only include non-None values in metadata (ChromaDB doesn't like None values)
+            metadata = {k: v for k, v in metadata.items() if v is not None}
             metadatas.append(metadata)
         
         # Add to collection in batches
         batch_size = 100
+        total_added = 0
+        
         for i in range(0, len(ids), batch_size):
             batch_ids = ids[i:i + batch_size]
             batch_embeddings = embeddings[i:i + batch_size]
             batch_documents = documents[i:i + batch_size]
             batch_metadatas = metadatas[i:i + batch_size]
             
-            collection.add(
-                ids=batch_ids,
-                embeddings=batch_embeddings,
-                documents=batch_documents,
-                metadatas=batch_metadatas
-            )
+            try:
+                collection.add(
+                    ids=batch_ids,
+                    embeddings=batch_embeddings,
+                    documents=batch_documents,
+                    metadatas=batch_metadatas
+                )
+                total_added += len(batch_ids)
+                print(f"Added batch {i//batch_size + 1}: {len(batch_ids)} screenshots")
+            except Exception as e:
+                print(f"Error adding batch {i//batch_size + 1}: {str(e)}")
+                # Try to add individually to identify problematic screenshots
+                for j, (screenshot_id, embedding, document, metadata) in enumerate(zip(batch_ids, batch_embeddings, batch_documents, batch_metadatas)):
+                    try:
+                        collection.add(
+                            ids=[screenshot_id],
+                            embeddings=[embedding],
+                            documents=[document],
+                            metadatas=[metadata]
+                        )
+                        total_added += 1
+                    except Exception as individual_error:
+                        print(f"Failed to add screenshot {screenshot_id}: {str(individual_error)}")
         
-        return len(ids)
+        print(f"Successfully loaded {total_added} screenshot embeddings with enhanced metadata")
+        return total_added
     
     def search_features(self, query, n_results=5, game_id=None, feature_ids=None):
         """Search for similar features"""

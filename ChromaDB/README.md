@@ -47,6 +47,241 @@ View ChromaDB structure and SQL correlation examples:
 python ChromaDB/inspect_database_structure.py
 ```
 
+## 🔄 Enhanced Change Detection for Feature Embeddings
+
+The feature embedding system now includes advanced change detection capabilities to automatically re-process features when their content has been updated.
+
+### Change Detection Methods
+
+**1. Content Hash (Default - Recommended)**
+```bash
+# Automatically detects when name or description content changes
+python ChromaDB/generate_feature_embeddings.py --change-detection content_hash
+```
+- Compares SHA256 hash of name + description content
+- Most accurate method for detecting meaningful changes
+- Ignores irrelevant metadata changes (like timestamps)
+
+**2. Timestamp-Based**
+```bash
+# Uses database updated_at timestamps to detect changes
+python ChromaDB/generate_feature_embeddings.py --change-detection timestamp
+```
+- Compares `updated_at` field from database with stored timestamp
+- Good for systems with reliable timestamp tracking
+- May re-process features with metadata-only changes
+
+**3. Force All (Re-process Everything)**
+```bash
+# Re-processes ALL features, ignoring existing embeddings
+python ChromaDB/generate_feature_embeddings.py --change-detection force_all
+```
+- Useful for model upgrades or major system changes
+- Will regenerate all embeddings (costs more API tokens)
+- Ensures complete consistency
+
+**4. Skip Existing (Traditional Resume)**
+```bash
+# Traditional mode - skips all features that already have embeddings
+python ChromaDB/generate_feature_embeddings.py --change-detection skip_existing
+```
+- Legacy behavior for backward compatibility
+- Only processes completely new features
+- Fastest option when no changes are expected
+
+### Practical Examples
+
+**Daily/Regular Updates (Recommended)**
+```bash
+# Check for content changes and process only what's needed
+python ChromaDB/generate_feature_embeddings.py
+# Uses content_hash by default - efficient and accurate
+```
+
+**After Bulk Content Updates**
+```bash
+# Use timestamp detection if you know when changes occurred
+python ChromaDB/generate_feature_embeddings.py --change-detection timestamp
+```
+
+**After Model/System Changes**
+```bash
+# Force regeneration of all embeddings
+python ChromaDB/generate_feature_embeddings.py --change-detection force_all
+```
+
+**Quick Feature Addition Check**
+```bash
+# Process only completely new features (fast)
+python ChromaDB/generate_feature_embeddings.py --change-detection skip_existing --limit 1000
+```
+
+### Understanding the Output
+
+When you run the feature embedding generation, you'll see detailed statistics:
+
+```
+🔄 Enhanced resume analysis:
+   📊 New features: 15        # Completely new features
+   🔄 Changed features: 8     # Features with updated content
+   ✅ Unchanged features (skipped): 1,247  # No changes detected
+   📈 Total to process: 23    # Will generate embeddings for 23 features
+
+🔍 Change detection method: content_hash
+      • Feature 142: Updated building system mechanics now include...
+      • Feature 298: Improved combat system with new weapon types...
+      • ... and 6 more
+```
+
+### Change Detection Flow
+
+1. **Query Database**: Fetch all features with timestamps
+2. **Analyze Existing**: Get existing embeddings with metadata from ChromaDB
+3. **Detect Changes**: Compare using selected method:
+   - Content hash: Hash current name+description vs stored hash
+   - Timestamp: Compare `updated_at` vs `last_updated` in metadata
+   - Force all: Mark all as changed
+   - Skip existing: Mark all existing as unchanged
+4. **Process**: Generate embeddings only for new and changed features
+5. **Update ChromaDB**: Store embeddings with enhanced metadata for future comparisons
+
+### Metadata Stored for Change Detection
+
+Each feature embedding now includes:
+- `content_hash`: SHA256 hash of name + description
+- `embedding_generated_at`: When the embedding was created
+- `last_updated`: Database timestamp when feature was last modified
+- `embedding_dimensions`: Vector dimensions used
+- `model`: OpenAI model used for embedding
+- `processing_success`: Whether embedding generation succeeded
+
+### Integration with Existing Workflows
+
+**Update Your CI/CD Pipeline**
+```bash
+# Add to your deployment script
+echo "Updating feature embeddings..."
+python ChromaDB/generate_feature_embeddings.py --change-detection content_hash
+
+if [ $? -eq 0 ]; then
+    echo "Updating vector database..."
+    python ChromaDB/setup_vector_database.py
+    echo "Vector database updated successfully"
+fi
+```
+
+**Monitor Changes**
+```bash
+# Check what would change without processing
+python ChromaDB/generate_feature_embeddings.py --change-detection content_hash --limit 0
+# Shows analysis but processes 0 features
+```
+
+### Performance Considerations
+
+- **Content Hash**: Fast analysis, accurate detection
+- **Timestamp**: Very fast analysis, may over-process
+- **Force All**: No analysis time, but processes everything
+- **Skip Existing**: Fastest analysis and processing
+
+### Troubleshooting
+
+**Problem**: Too many features marked as "changed" 
+**Solution**: Check if your database has reliable timestamps, consider using `content_hash` method
+
+**Problem**: Missing content changes
+**Solution**: Use `force_all` to regenerate everything, then switch to `content_hash` for future runs
+
+**Problem**: Want to see what changed without processing
+**Solution**: Run with `--limit 0` to see analysis without generating embeddings
+
+## 🖼️ Enhanced Change Detection for Screenshot Embeddings
+
+The screenshot embedding system includes the same advanced change detection capabilities as features, allowing you to efficiently re-process only screenshots that have changed.
+
+### Screenshot Change Detection Methods
+
+**1. Content Hash (Default - Recommended)**
+```bash
+# Automatically detects when caption, description, or UI elements change
+python ChromaDB/generate_screenshot_embeddings.py --change-detection content_hash
+```
+- Compares SHA256 hash of caption + description + UI elements
+- Most accurate method for detecting meaningful content changes
+- Ignores irrelevant metadata changes
+
+**2. Timestamp-Based**
+```bash
+# Uses database updated_at/last_updated timestamps
+python ChromaDB/generate_screenshot_embeddings.py --change-detection timestamp
+```
+- Compares database timestamps with stored embedding metadata
+- Good for systems with reliable timestamp tracking
+
+**3. Force All & Skip Existing**
+```bash
+# Re-process all screenshots
+python ChromaDB/generate_screenshot_embeddings.py --change-detection force_all
+
+# Traditional resume (new screenshots only)
+python ChromaDB/generate_screenshot_embeddings.py --change-detection skip_existing
+```
+
+### Screenshot-Specific Examples
+
+**Daily Screenshot Updates**
+```bash
+# Process new and changed screenshots efficiently
+python ChromaDB/generate_screenshot_embeddings.py
+```
+
+**After UI/Caption Updates**
+```bash
+# Detect screenshots with updated captions or UI elements
+python ChromaDB/generate_screenshot_embeddings.py --change-detection content_hash
+```
+
+**After Screenshot Re-analysis**
+```bash
+# Force regeneration after updating screenshot analysis
+python ChromaDB/generate_screenshot_embeddings.py --change-detection force_all
+```
+
+### Screenshot Content Hash Includes:
+- **Caption**: Screenshot caption text
+- **Description**: Screenshot description 
+- **UI Elements**: Structured UI element data (buttons, menus, etc.)
+
+### Screenshot Metadata for Change Detection:
+- `content_hash`: Hash of caption + description + elements
+- `elements_data`: Stored UI elements for reference
+- `path`: Screenshot file path
+- `capture_time`: When screenshot was taken
+- `last_updated`: Database modification timestamp
+
+### Combined Workflow
+
+**Update Both Features and Screenshots**
+```bash
+# Process features first
+python ChromaDB/generate_feature_embeddings.py --change-detection content_hash
+
+# Then process screenshots
+python ChromaDB/generate_screenshot_embeddings.py --change-detection content_hash
+
+# Update vector database with both
+python ChromaDB/setup_vector_database.py
+```
+
+**Parallel Processing for Large Datasets**
+```bash
+# Process in parallel for faster updates
+python ChromaDB/generate_feature_embeddings.py --change-detection content_hash &
+python ChromaDB/generate_screenshot_embeddings.py --change-detection content_hash &
+wait  # Wait for both to complete
+python ChromaDB/setup_vector_database.py
+```
+
 ## Database Structure & SQL Correlation
 
 ### ChromaDB Collections

@@ -6,10 +6,25 @@ This script queries the features_game table from the database to get feature nam
 then generates embeddings using the OpenAI embedding model. It outputs a JSON file with the vector
 embeddings and detailed analytics including field-level token statistics.
 
+Now includes enhanced change detection to re-process features when their content has changed.
+
 Usage:
     python generate_feature_embeddings.py [--limit <number>] [--output <filename>] [--dimensions <dims>]
     
-Example:
+Examples:
+    # Basic usage - processes new and changed features
+    python generate_feature_embeddings.py
+    
+    # Force re-process all features (ignoring existing embeddings)
+    python generate_feature_embeddings.py --change-detection force_all
+    
+    # Use timestamp-based change detection instead of content hash
+    python generate_feature_embeddings.py --change-detection timestamp
+    
+    # Traditional resume mode (skip all existing features)
+    python generate_feature_embeddings.py --change-detection skip_existing
+    
+    # Limited run for testing
     python generate_feature_embeddings.py --limit 10 --dimensions 1536 --output feature_embeddings.json
 """
 import argparse
@@ -34,7 +49,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate feature embeddings with progress tracking and advanced analytics")
+    parser = argparse.ArgumentParser(description="Generate feature embeddings with enhanced change detection and progress tracking")
     parser.add_argument("--limit", type=int, help="Limit number of features (useful for testing)")
     parser.add_argument("--game_id", help="Specific game ID to process")
     parser.add_argument("--output", default="ChromaDB/feature_embeddings.json", help="Output filename")
@@ -43,6 +58,16 @@ def main():
     parser.add_argument("--rate-limit", type=float, default=0.1, help="Delay between API calls (seconds)")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
     parser.add_argument("--no-resume", action="store_true", help="Disable resume functionality (process all features, may create duplicates)")
+    
+    # Enhanced change detection options
+    parser.add_argument("--change-detection", 
+                       choices=["content_hash", "timestamp", "force_all", "skip_existing"], 
+                       default="content_hash",
+                       help="""Method for detecting changed features:
+                            content_hash (default): Compare content hash of name+description
+                            timestamp: Compare database updated_at timestamps
+                            force_all: Re-process all features (ignoring existing embeddings)
+                            skip_existing: Traditional resume mode (skip all existing features)""")
     
     args = parser.parse_args()
     
@@ -54,6 +79,14 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
+    # Handle deprecated --no-resume flag
+    if args.no_resume:
+        if args.change_detection != "content_hash":
+            logger.warning("Both --no-resume and --change-detection specified. Using --change-detection value.")
+        else:
+            args.change_detection = "force_all"
+            logger.info("--no-resume detected, setting change detection to 'force_all'")
+    
     logger.info("=" * 60)
     logger.info("Feature Embeddings Generation Started")
     logger.info("=" * 60)
@@ -63,7 +96,16 @@ def main():
     logger.info(f"Dimensions: {args.dimensions or 'Default (3072)'}")
     logger.info(f"Progress updates every: {args.progress_every} features")
     logger.info(f"Rate limit delay: {args.rate_limit}s")
-    logger.info(f"Resume mode: {'Disabled' if args.no_resume else 'Enabled (will skip already processed features)'}")
+    logger.info(f"Change detection method: {args.change_detection}")
+    
+    # Explain the change detection method
+    method_explanations = {
+        "content_hash": "Will re-process features when name or description content changes",
+        "timestamp": "Will re-process features when database updated_at timestamp is newer",
+        "force_all": "Will re-process ALL features (ignoring existing embeddings)",
+        "skip_existing": "Traditional mode - will skip all features that already have embeddings"
+    }
+    logger.info(f"Method explanation: {method_explanations.get(args.change_detection, 'Unknown method')}")
     
     try:
         generator = FeatureEmbeddingsGenerator()
@@ -76,26 +118,28 @@ def main():
             game_id=args.game_id,
             save_progress_every=args.progress_every,
             dimensions=args.dimensions,
-            resume=not args.no_resume  # Resume is enabled by default, disabled if --no-resume is passed
+            resume=True,  # Always enable resume, let change_detection control behavior
+            change_detection=args.change_detection
         )
         
         generator.save_embeddings_to_file(embeddings_data, args.output)
         
         # Enhanced summary
         metadata = embeddings_data['metadata']
+        logger.info("=" * 60)
         logger.info("GENERATION COMPLETE - SUMMARY")
         logger.info("=" * 60)
         logger.info(f"✓ Output file: {args.output}")
         logger.info(f"✓ Model: {metadata['model']}")
         logger.info(f"✓ Dimensions: {metadata.get('dimensions', 'default (3072)')}")
-        logger.info(f"✓ Total features in database: {metadata.get('total_features_in_db', metadata.get('total_features', 0))}")
+        logger.info(f"✓ Change detection: {metadata.get('change_detection_method', 'content_hash')}")
+        logger.info(f"✓ Total features in database: {metadata.get('total_features_in_db', 0)}")
         
-        # Show resume statistics if applicable
-        if metadata.get('skipped_features', 0) > 0:
-            logger.info(f"✓ Features skipped (already processed): {metadata['skipped_features']}")
-            logger.info(f"✓ New features processed: {metadata.get('new_features_to_process', 0)}")
-        else:
-            logger.info(f"✓ Features processed: {metadata.get('new_features_to_process', metadata.get('total_features', 0))}")
+        # Show detailed processing statistics
+        logger.info(f"✓ New features: {metadata.get('new_features', 0)}")
+        logger.info(f"✓ Changed features: {metadata.get('changed_features', 0)}")
+        logger.info(f"✓ Unchanged features (skipped): {metadata.get('unchanged_features', 0)}")
+        logger.info(f"✓ Total features processed: {metadata.get('features_processed', 0)}")
             
         logger.info(f"✓ Successful embeddings: {metadata.get('successful_embeddings', 0)}")
         logger.info(f"✓ Failed embeddings: {metadata.get('failed_embeddings', 0)}")
@@ -115,6 +159,14 @@ def main():
             for field, stats in field_stats.items():
                 if stats['count'] > 0:
                     logger.info(f"✓ {field.capitalize()}: {stats['total']} total tokens, {stats['count']} fields, {stats['avg']} avg tokens/field")
+        
+        # Helpful next steps
+        if metadata.get('changed_features', 0) > 0 or metadata.get('new_features', 0) > 0:
+            logger.info(f"\n--- Next Steps ---")
+            logger.info("✓ Run the ChromaDB setup to update the vector database:")
+            logger.info("   python ChromaDB/setup_vector_database.py")
+            logger.info("✓ Test the updated search:")
+            logger.info("   python ChromaDB/test_vector_search.py")
         
         if metadata.get('failed_embeddings', 0) > 0:
             logger.warning(f"⚠️  {metadata['failed_embeddings']} features failed to generate embeddings")
