@@ -1,0 +1,14 @@
+EVALUATION SUMMARY REPORT
+==================================================
+
+Evaluation Date: 2025-06-04T12:05:24.764722
+Total Variants: 1
+Total Tests: 1
+Runs per Variant: 3
+
+
+VARIANT: baseline
+----------------------------------------
+
+  Test: minigames_conversation
+    All runs failed!
