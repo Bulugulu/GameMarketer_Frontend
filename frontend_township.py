@@ -289,6 +289,85 @@ def main():
                     st.error("❌ No ChromaDB variables found! Make sure ChromaDB service is deployed on Railway.")
                     st.write("Required variables from Railway ChromaDB template:")
                     st.code("CHROMA_PRIVATE_URL or CHROMA_PUBLIC_URL\nCHROMA_SERVER_AUTHN_CREDENTIALS")
+                else:
+                    # Add Railway ChromaDB connection test button
+                    if st.button("🧪 Test Railway ChromaDB Connection", key="test_chromadb"):
+                        st.write("**Testing ChromaDB Connection...**")
+                        
+                        # Import and run the test
+                        try:
+                            import chromadb
+                            from chromadb.config import Settings
+                            
+                            chroma_private = os.environ.get("CHROMA_PRIVATE_URL")
+                            chroma_public = os.environ.get("CHROMA_PUBLIC_URL")
+                            chroma_token = os.environ.get("CHROMA_SERVER_AUTHN_CREDENTIALS")
+                            
+                            test_urls = []
+                            if chroma_private:
+                                test_urls.append(("Private", chroma_private))
+                            if chroma_public:
+                                test_urls.append(("Public", chroma_public))
+                            
+                            success = False
+                            for url_type, url in test_urls:
+                                st.write(f"🔗 Testing {url_type}: `{url}`")
+                                
+                                # Test with authentication
+                                if chroma_token:
+                                    try:
+                                        client = chromadb.HttpClient(
+                                            host=url,
+                                            settings=Settings(
+                                                chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
+                                                chroma_client_auth_credentials=chroma_token,
+                                                chroma_client_auth_token_transport_header="Authorization"
+                                            )
+                                        )
+                                        
+                                        heartbeat = client.heartbeat()
+                                        collections = client.list_collections()
+                                        
+                                        st.success(f"✅ {url_type} URL: Connected successfully!")
+                                        st.write(f"   Heartbeat: {heartbeat}")
+                                        st.write(f"   Collections: {len(collections)}")
+                                        
+                                        if collections:
+                                            for col in collections:
+                                                st.write(f"   - {col.name}")
+                                        
+                                        success = True
+                                        break
+                                        
+                                    except Exception as e:
+                                        st.error(f"❌ {url_type} with auth failed: {e}")
+                                
+                                # Test without authentication as fallback
+                                if not success:
+                                    try:
+                                        client = chromadb.HttpClient(host=url)
+                                        heartbeat = client.heartbeat()
+                                        collections = client.list_collections()
+                                        
+                                        st.warning(f"⚠️ {url_type} URL: Connected without auth")
+                                        st.write(f"   Collections: {len(collections)}")
+                                        success = True
+                                        break
+                                        
+                                    except Exception as e:
+                                        st.error(f"❌ {url_type} without auth failed: {e}")
+                            
+                            if not success:
+                                st.error("❌ All ChromaDB connection attempts failed")
+                                st.write("**Possible solutions:**")
+                                st.write("1. Check if ChromaDB service is running in Railway")
+                                st.write("2. Verify ChromaDB service variables are set correctly")
+                                st.write("3. Try restarting the ChromaDB service")
+                        
+                        except ImportError as e:
+                            st.error(f"❌ ChromaDB import failed: {e}")
+                        except Exception as e:
+                            st.error(f"❌ Test failed: {e}")
             
             # Quick fix option
             if current_env == "local" and railway_detected:
