@@ -10,16 +10,17 @@ def run_sql_query(query: str) -> dict:
     """
     Run a SQL SELECT query using pg8000 and return results as a dict.
     Database connection parameters are read from environment variables:
-    PG_DATABASE, PG_USER, PG_PASSWORD, PG_HOST, PG_PORT.
+    PG_DATABASE, PG_USER, PG_PASSWORD (or DATABASE_PASSWORD), PG_HOST, PG_PORT.
     """
+    # Check for the specific environment variables used by this project
     db_name = os.environ.get("PG_DATABASE")
     user = os.environ.get("PG_USER")
-    password = os.environ.get("PG_PASSWORD")
+    password = os.environ.get("PG_PASSWORD") or os.environ.get("DATABASE_PASSWORD")
     host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", 5432))
+    port = int(os.environ.get("PG_PORT", "5432"))
 
     if not all([db_name, user, password]):
-        return {"error": "Database credentials (PG_DATABASE, PG_USER, PG_PASSWORD) not found in environment variables."}
+        return {"error": "Database credentials (PG_DATABASE, PG_USER, PG_PASSWORD or DATABASE_PASSWORD) not found in environment variables."}
 
     conn = None  # Initialize conn to None
     try:
@@ -78,11 +79,11 @@ def run_sql_query(query: str) -> dict:
             conn.close()
 
 if __name__ == '__main__':
-    # Example usage (ensure your .env.local is set up with PG_* variables)
+    # Example usage (ensure your .env.local is set up with the project's environment variables)
     # Create a dummy .env.local if you don't have one:
     # PG_DATABASE=your_db
     # PG_USER=your_user
-    # PG_PASSWORD=your_password
+    # PG_PASSWORD=your_password        (or DATABASE_PASSWORD=your_password)
     # PG_HOST=localhost
     # PG_PORT=5432
     
@@ -97,8 +98,13 @@ if __name__ == '__main__':
     test_query = "SELECT id, screen_id, screen_name, screen_type FROM screens LIMIT 2;" 
     
     # Check if environment variables are loaded for the test
-    if not all([os.environ.get("PG_DATABASE"), os.environ.get("PG_USER"), os.environ.get("PG_PASSWORD")]):
-        print("Skipping example query: PG_DATABASE, PG_USER, or PG_PASSWORD not set in .env.local")
+    if not all([
+        os.environ.get("PG_DATABASE"), 
+        os.environ.get("PG_USER"), 
+        os.environ.get("PG_PASSWORD") or os.environ.get("DATABASE_PASSWORD")
+    ]):
+        print("Skipping example query: Database credentials not set in .env.local")
+        print("Need: PG_DATABASE, PG_USER, PG_PASSWORD (or DATABASE_PASSWORD), PG_HOST, PG_PORT")
     else:
         results = run_sql_query(test_query)
         print("\nQuery Results:")
