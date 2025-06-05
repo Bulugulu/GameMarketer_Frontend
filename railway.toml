@@ -1,0 +1,27 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+healthcheckPath = "/_stcore/health"
+healthcheckTimeout = 100
+restartPolicyType = "on_failure"
+
+[[deploy.environmentVariables]]
+name = "PORT"
+value = "8080"
+
+[[deploy.environmentVariables]]
+name = "STREAMLIT_SERVER_PORT"
+value = "8080"
+
+[[deploy.environmentVariables]]
+name = "STREAMLIT_SERVER_ADDRESS"
+value = "0.0.0.0"
+
+[[deploy.environmentVariables]]
+name = "STREAMLIT_SERVER_HEADLESS"
+value = "true"
+
+[[deploy.environmentVariables]]
+name = "STREAMLIT_BROWSER_GATHER_USAGE_STATS"
+value = "false" 
