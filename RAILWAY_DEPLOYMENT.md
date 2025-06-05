@@ -63,10 +63,15 @@ The app automatically detects Railway environment and uses the correct database 
 #### ChromaDB Setup:
 
 1. In your Railway project, click **+ New Service**
-2. Select **Template** and search for "ChromaDB"
-3. Deploy the ChromaDB template
-4. Railway will provide the ChromaDB URL and credentials
-5. The app will automatically detect and use the Railway ChromaDB service
+2. **Deploy ChromaDB Template**: Go to https://railway.com/deploy/kbvIRV and click "Deploy Now"
+3. **Add to your project**: Choose your existing project when deploying the template
+4. **Configure Service Variables**: Railway will automatically provide these variables:
+   - `CHROMA_PRIVATE_URL` - Internal URL for service-to-service communication (recommended)
+   - `CHROMA_PUBLIC_URL` - Public URL if needed for external access
+   - `CHROMA_SERVER_AUTHN_CREDENTIALS` - Authentication token (automatically generated)
+5. **Link to your app**: The app will automatically detect and use Railway ChromaDB
+
+**Important**: Your app automatically uses `CHROMA_PRIVATE_URL` first, then falls back to `CHROMA_PUBLIC_URL`. The private URL is recommended for security and performance.
 
 ### 4. Deploy
 
@@ -92,7 +97,7 @@ The app automatically detects whether it's running on Railway or locally by chec
 - **Automatic database switching** between local and Railway databases
 
 ### Procfile
-```
+```bash
 web: streamlit run frontend_township.py --server.port=$PORT --server.address=0.0.0.0
 ```
 

@@ -11,6 +11,7 @@ from utils import (
     show_video_player
 )
 from utils.config import get_environment, get_chroma_config
+import os
 
 # Configure page to use wide layout
 st.set_page_config(
@@ -250,7 +251,6 @@ def main():
             st.write(f"**Detected Environment:** {current_env}")
             
             # Show key Railway variables
-            import os
             railway_indicators = [
                 "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", 
                 "RAILWAY_DEPLOYMENT_ID", "RAILWAY_ENVIRONMENT_ID"
@@ -269,7 +269,26 @@ def main():
             chroma_config = get_chroma_config()
             st.write(f"**ChromaDB Mode:** {'Railway HTTP' if chroma_config['is_railway'] else 'Local File'}")
             if chroma_config['host']:
-                st.write(f"**ChromaDB Host:** {chroma_config['host'][:30]}...")
+                st.write(f"**ChromaDB Host:** {chroma_config['host'][:50]}...")
+            
+            # Railway ChromaDB specific debugging
+            if chroma_config['is_railway']:
+                st.write("**Railway ChromaDB Variables:**")
+                chroma_vars = {
+                    "CHROMA_PRIVATE_URL": os.environ.get("CHROMA_PRIVATE_URL"),
+                    "CHROMA_PUBLIC_URL": os.environ.get("CHROMA_PUBLIC_URL"), 
+                    "CHROMA_SERVER_AUTHN_CREDENTIALS": os.environ.get("CHROMA_SERVER_AUTHN_CREDENTIALS")
+                }
+                
+                for var, value in chroma_vars.items():
+                    status = "✅" if value else "❌"
+                    display = value[:20] + "..." if value and len(value) > 20 else value or "Not set"
+                    st.write(f"{status} `{var}`: {display}")
+                
+                if not any(chroma_vars.values()):
+                    st.error("❌ No ChromaDB variables found! Make sure ChromaDB service is deployed on Railway.")
+                    st.write("Required variables from Railway ChromaDB template:")
+                    st.code("CHROMA_PRIVATE_URL or CHROMA_PUBLIC_URL\nCHROMA_SERVER_AUTHN_CREDENTIALS")
             
             # Quick fix option
             if current_env == "local" and railway_detected:

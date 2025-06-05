@@ -74,9 +74,16 @@ else:
 
 # ChromaDB configuration
 if IS_RAILWAY:
-    # Use Railway ChromaDB URL
-    CHROMA_HOST = os.environ.get("CHROMA_PRIVATE_URL", "http://chroma.railway.internal")
+    # Use Railway ChromaDB environment variables as per their template
+    # See: https://railway.com/deploy/kbvIRV
+    CHROMA_HOST = os.environ.get("CHROMA_PRIVATE_URL") or os.environ.get("CHROMA_PUBLIC_URL")
     CHROMA_AUTH_TOKEN = os.environ.get("CHROMA_SERVER_AUTHN_CREDENTIALS", "")
+    
+    print(f"[DEBUG] Railway ChromaDB config:")
+    print(f"[DEBUG] - CHROMA_PRIVATE_URL: {'✓' if os.environ.get('CHROMA_PRIVATE_URL') else '✗'}")
+    print(f"[DEBUG] - CHROMA_PUBLIC_URL: {'✓' if os.environ.get('CHROMA_PUBLIC_URL') else '✗'}")
+    print(f"[DEBUG] - CHROMA_SERVER_AUTHN_CREDENTIALS: {'✓' if CHROMA_AUTH_TOKEN else '✗'}")
+    print(f"[DEBUG] - Using host: {CHROMA_HOST}")
 else:
     # Use local ChromaDB (file-based) regardless of what Railway variables might be present
     CHROMA_HOST = None  # Will use local file-based ChromaDB

@@ -16,32 +16,46 @@ class ChromaDBManager:
         chroma_config = get_chroma_config()
         
         if chroma_config["is_railway"] and chroma_config["host"]:
-            # Railway environment - use HTTP client
+            # Railway environment - use HTTP client with proper authentication
             print(f"Connecting to Railway ChromaDB at {chroma_config['host']}")
             
-            # Parse the URL to extract components
-            parsed_url = urllib.parse.urlparse(chroma_config['host'])
-            host = parsed_url.hostname or parsed_url.netloc
-            port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
-            ssl = parsed_url.scheme == 'https'
-            
-            # Create settings for Railway ChromaDB
-            settings = Settings(
-                chroma_api_impl="chromadb.api.fastapi.FastAPI",
-                chroma_server_host=host,
-                chroma_server_http_port=port,
-                chroma_server_ssl_enabled=ssl,
-                chroma_server_headers={"Authorization": f"Bearer {chroma_config['auth_token']}"} if chroma_config['auth_token'] else {}
-            )
-            
-            # Initialize HTTP client for Railway
-            self.client = chromadb.HttpClient(
-                host=host,
-                port=port,
-                ssl=ssl,
-                headers={"Authorization": f"Bearer {chroma_config['auth_token']}"} if chroma_config['auth_token'] else {},
-                settings=settings
-            )
+            try:
+                # Parse the URL to extract components for Railway ChromaDB
+                parsed_url = urllib.parse.urlparse(chroma_config['host'])
+                
+                # For Railway's template, use the full URL as the path
+                # Railway ChromaDB expects the full URL including protocol
+                if chroma_config['auth_token']:
+                    # Use authenticated client as per Railway template docs
+                    self.client = chromadb.HttpClient(
+                        host=chroma_config['host'],  # Full URL for Railway
+                        settings=Settings(
+                            chroma_client_auth_provider="chromadb.auth.token.TokenAuthClientProvider",
+                            chroma_client_auth_credentials=chroma_config['auth_token']
+                        )
+                    )
+                    print(f"✓ Initialized Railway ChromaDB client with authentication")
+                else:
+                    # Fallback without auth (if auth not configured)
+                    self.client = chromadb.HttpClient(host=chroma_config['host'])
+                    print(f"⚠️ Initialized Railway ChromaDB client without authentication")
+                    
+            except Exception as e:
+                print(f"❌ Failed to initialize Railway ChromaDB client: {e}")
+                print("Attempting fallback connection method...")
+                
+                # Fallback: Try simpler connection method
+                try:
+                    self.client = chromadb.HttpClient(
+                        host=chroma_config['host'].replace('http://', '').replace('https://', ''),
+                        port=80 if 'http://' in chroma_config['host'] else 443,
+                        ssl='https://' in chroma_config['host']
+                    )
+                    print(f"✓ Fallback Railway ChromaDB connection established")
+                except Exception as fallback_error:
+                    print(f"❌ Fallback connection also failed: {fallback_error}")
+                    raise fallback_error
+                    
             self.db_path = None  # No local path in Railway
         else:
             # Local environment - use persistent client
