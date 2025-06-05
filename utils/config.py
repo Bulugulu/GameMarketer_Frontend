@@ -18,37 +18,34 @@ MODEL_NAME = "gpt-4o"  # Use a model that works well with Agents SDK
 # Better Railway environment detection
 def is_railway_environment():
     """
-    More reliable Railway environment detection.
-    Uses multiple indicators that are only present during actual Railway deployment.
+    Reliable Railway environment detection using official Railway-provided variables.
+    These variables are automatically set by Railway during deployment.
     """
-    # Method 1: Check for Railway-specific runtime environment name
-    if os.environ.get("RAILWAY_ENVIRONMENT_NAME"):
+    # Method 1: Check for Railway project ID (always present in Railway runtime)
+    if os.environ.get("RAILWAY_PROJECT_ID"):
         return True
     
-    # Method 2: Check for Railway service ID (only set at runtime)
+    # Method 2: Check for Railway service ID (always present in Railway runtime)
     if os.environ.get("RAILWAY_SERVICE_ID"):
         return True
     
-    # Method 3: Check for Railway deployment ID (only set at runtime)
+    # Method 3: Check for Railway deployment ID (always present in Railway runtime)
     if os.environ.get("RAILWAY_DEPLOYMENT_ID"):
         return True
     
-    # Method 4: Manual override for testing
+    # Method 4: Check for Railway environment ID (always present in Railway runtime)
+    if os.environ.get("RAILWAY_ENVIRONMENT_ID"):
+        return True
+    
+    # Method 5: Manual override for testing Railway mode locally
     if os.environ.get("FORCE_RAILWAY_MODE") == "true":
         return True
     
-    # Method 5: Explicit local override (takes precedence)
+    # Method 6: Explicit local override (takes precedence)
     if os.environ.get("FORCE_LOCAL_MODE") == "true":
         return False
     
-    # Method 6: Check if we're in a containerized Railway environment
-    # Railway sets specific host patterns for internal services
-    if os.environ.get("PGHOST") == "postgres.railway.internal":
-        # But only if we're NOT explicitly running locally
-        if not os.path.exists('.env.local'):  # If no local env file, likely in Railway
-            return True
-    
-    # Default to local development
+    # Default to local development if no Railway variables detected
     return False
 
 IS_RAILWAY = is_railway_environment()

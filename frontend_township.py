@@ -10,6 +10,7 @@ from utils import (
     display_developer_notes_panel,
     show_video_player
 )
+from utils.config import get_environment, get_chroma_config
 
 # Configure page to use wide layout
 st.set_page_config(
@@ -238,6 +239,51 @@ def main():
     # Initialize debug info storage if not exists
     if "vector_debug_info" not in st.session_state:
         st.session_state.vector_debug_info = []
+
+    # Debug information (show only if environment detection might be wrong)
+    current_env = get_environment()
+    
+    # Show debug info if we detect issues or if explicitly requested
+    show_debug = st.sidebar.checkbox("🔧 Show Environment Debug", value=False)
+    if show_debug:
+        with st.sidebar.expander("🔍 Environment Debug Info", expanded=True):
+            st.write(f"**Detected Environment:** {current_env}")
+            
+            # Show key Railway variables
+            import os
+            railway_indicators = [
+                "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID", 
+                "RAILWAY_DEPLOYMENT_ID", "RAILWAY_ENVIRONMENT_ID"
+            ]
+            
+            railway_detected = any(os.environ.get(var) for var in railway_indicators)
+            st.write(f"**Railway Variables Present:** {'Yes' if railway_detected else 'No'}")
+            
+            for var in railway_indicators:
+                value = os.environ.get(var)
+                status = "✅" if value else "❌"
+                display = value[:10] + "..." if value and len(value) > 10 else value or "Not set"
+                st.write(f"{status} `{var}`: {display}")
+            
+            # ChromaDB config
+            chroma_config = get_chroma_config()
+            st.write(f"**ChromaDB Mode:** {'Railway HTTP' if chroma_config['is_railway'] else 'Local File'}")
+            if chroma_config['host']:
+                st.write(f"**ChromaDB Host:** {chroma_config['host'][:30]}...")
+            
+            # Quick fix option
+            if current_env == "local" and railway_detected:
+                st.warning("⚠️ Railway variables detected but environment is 'local'")
+                if st.button("🔧 Force Railway Mode"):
+                    os.environ["FORCE_RAILWAY_MODE"] = "true"
+                    st.rerun()
+            
+            if os.environ.get("FORCE_RAILWAY_MODE"):
+                st.info("🚂 Railway mode forced via FORCE_RAILWAY_MODE")
+                if st.button("🔄 Clear Force Mode"):
+                    if "FORCE_RAILWAY_MODE" in os.environ:
+                        del os.environ["FORCE_RAILWAY_MODE"]
+                    st.rerun()
 
     # Show fullscreen dialog if in fullscreen mode
     if st.session_state.fullscreen_mode:

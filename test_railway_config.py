@@ -18,6 +18,39 @@ env = get_environment()
 print(f"\n📍 Environment: {env}")
 print(f"   Railway detected: {'Yes' if env == 'railway' else 'No'}")
 
+# Show Railway environment variables for debugging
+print(f"\n🚂 Railway Environment Variables:")
+railway_vars = [
+    "RAILWAY_PROJECT_ID",
+    "RAILWAY_SERVICE_ID", 
+    "RAILWAY_DEPLOYMENT_ID",
+    "RAILWAY_ENVIRONMENT_ID",
+    "RAILWAY_PROJECT_NAME",
+    "RAILWAY_ENVIRONMENT_NAME",
+    "RAILWAY_SERVICE_NAME",
+    "RAILWAY_PUBLIC_DOMAIN",
+    "RAILWAY_PRIVATE_DOMAIN"
+]
+
+for var in railway_vars:
+    value = os.environ.get(var)
+    if value:
+        # Show first 20 chars for security
+        display_value = value[:20] + "..." if len(value) > 20 else value
+        print(f"   ✅ {var}: {display_value}")
+    else:
+        print(f"   ❌ {var}: Not set")
+
+# Manual overrides
+force_railway = os.environ.get("FORCE_RAILWAY_MODE") 
+force_local = os.environ.get("FORCE_LOCAL_MODE")
+if force_railway or force_local:
+    print(f"\n🔧 Manual Overrides:")
+    if force_railway:
+        print(f"   FORCE_RAILWAY_MODE: {force_railway}")
+    if force_local:
+        print(f"   FORCE_LOCAL_MODE: {force_local}")
+
 # Test PostgreSQL configuration
 print(f"\n🐘 PostgreSQL Configuration:")
 print(f"   Host: {DB_CONNECTION_PARAMS['host']}")
