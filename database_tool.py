@@ -9,27 +9,45 @@ load_dotenv(".env.local")
 def run_sql_query(query: str) -> dict:
     """
     Run a SQL SELECT query using pg8000 and return results as a dict.
-    Database connection parameters are read from environment variables:
-    PG_DATABASE, PG_USER, PG_PASSWORD (or DATABASE_PASSWORD), PG_HOST, PG_PORT.
+    Database connection parameters are automatically determined based on environment
+    (local development vs Railway deployment).
     """
-    # Check for the specific environment variables used by this project
-    db_name = os.environ.get("PG_DATABASE")
-    user = os.environ.get("PG_USER")
-    password = os.environ.get("PG_PASSWORD") or os.environ.get("DATABASE_PASSWORD")
-    host = os.environ.get("PG_HOST", "localhost")
-    port = int(os.environ.get("PG_PORT", "5432"))
-
-    if not all([db_name, user, password]):
-        return {"error": "Database credentials (PG_DATABASE, PG_USER, PG_PASSWORD or DATABASE_PASSWORD) not found in environment variables."}
+    try:
+        # Use centralized database configuration
+        from utils.config import DB_CONNECTION_PARAMS, get_environment
+        
+        db_params = DB_CONNECTION_PARAMS
+        environment = get_environment()
+        
+        print(f"[DEBUG] Database connection for {environment} environment:")
+        print(f"[DEBUG] Host: {db_params['host']}, Database: {db_params['dbname']}")
+        
+        if not all([db_params['dbname'], db_params['user'], db_params['password']]):
+            missing = [k for k, v in db_params.items() if not v and k != 'port']
+            return {"error": f"Database credentials missing: {missing}. Environment: {environment}"}
+            
+    except ImportError:
+        # Fallback to original logic if utils.config is not available
+        print("[DEBUG] Falling back to direct environment variable reading")
+        db_params = {
+            'dbname': os.environ.get("PG_DATABASE"),
+            'user': os.environ.get("PG_USER"),
+            'password': os.environ.get("PG_PASSWORD") or os.environ.get("DATABASE_PASSWORD"),
+            'host': os.environ.get("PG_HOST", "localhost"),
+            'port': int(os.environ.get("PG_PORT", "5432"))
+        }
+        
+        if not all([db_params['dbname'], db_params['user'], db_params['password']]):
+            return {"error": "Database credentials (PG_DATABASE, PG_USER, PG_PASSWORD or DATABASE_PASSWORD) not found in environment variables."}
 
     conn = None  # Initialize conn to None
     try:
         conn = pg8000.connect(
-            database=db_name,
-            user=user,
-            password=password,
-            host=host,
-            port=port
+            database=db_params['dbname'],
+            user=db_params['user'],
+            password=db_params['password'],
+            host=db_params['host'],
+            port=int(db_params['port'])
         )
         cursor = conn.cursor()
 
@@ -79,33 +97,17 @@ def run_sql_query(query: str) -> dict:
             conn.close()
 
 if __name__ == '__main__':
-    # Example usage (ensure your .env.local is set up with the project's environment variables)
-    # Create a dummy .env.local if you don't have one:
-    # PG_DATABASE=your_db
-    # PG_USER=your_user
-    # PG_PASSWORD=your_password        (or DATABASE_PASSWORD=your_password)
-    # PG_HOST=localhost
-    # PG_PORT=5432
-    
-    # Note: You'll need a PostgreSQL server running and the specified database/table existing.
-    # For this example, let's assume a table 'screens' exists based on the user's context.
-    # A more comprehensive test would involve setting up a test DB.
-
+    # Example usage with automatic environment detection
     print("Attempting to run a sample query against the 'screens' table...")
-    # Replace 'your_screens_table_name' with the actual table name if different
-    # Ensure your DB has a table that matches the structure provided by the user.
-    # Example based on user's `database_structure_md` for the `screens` table
-    test_query = "SELECT id, screen_id, screen_name, screen_type FROM screens LIMIT 2;" 
     
-    # Check if environment variables are loaded for the test
-    if not all([
-        os.environ.get("PG_DATABASE"), 
-        os.environ.get("PG_USER"), 
-        os.environ.get("PG_PASSWORD") or os.environ.get("DATABASE_PASSWORD")
-    ]):
-        print("Skipping example query: Database credentials not set in .env.local")
-        print("Need: PG_DATABASE, PG_USER, PG_PASSWORD (or DATABASE_PASSWORD), PG_HOST, PG_PORT")
-    else:
+    # Test the centralized configuration
+    try:
+        from utils.config import get_environment, DB_CONNECTION_PARAMS
+        env = get_environment()
+        print(f"Detected environment: {env}")
+        print(f"Database configuration: {DB_CONNECTION_PARAMS['host']}:{DB_CONNECTION_PARAMS['port']}/{DB_CONNECTION_PARAMS['dbname']}")
+        
+        test_query = "SELECT id, screen_id, screen_name, screen_type FROM screens LIMIT 2;"
         results = run_sql_query(test_query)
         print("\nQuery Results:")
         if "error" in results:
@@ -115,6 +117,12 @@ if __name__ == '__main__':
             for row in results['rows']:
                 print(row)
             print(f"Message: {results.get('message', '')}")
+            
+    except ImportError as e:
+        print(f"Could not import utils.config: {e}")
+        print("Make sure you're running this from the project root directory")
+    except Exception as e:
+        print(f"Configuration error: {e}")
 
     # Test non-SELECT query
     print("\nAttempting to run a non-SELECT query (should be blocked)...")

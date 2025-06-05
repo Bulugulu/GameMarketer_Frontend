@@ -7,20 +7,56 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pathlib import Path
 from dotenv import load_dotenv
+import urllib.parse
 
 class ChromaDBManager:
     def __init__(self, db_path="./ChromaDB/chroma_db", use_openai_embeddings=True):
-        self.db_path = Path(db_path)
-        self.db_path.mkdir(parents=True, exist_ok=True)
+        # Import config to get ChromaDB settings
+        from utils.config import get_chroma_config
+        chroma_config = get_chroma_config()
         
-        # Initialize ChromaDB client
-        self.client = chromadb.PersistentClient(
-            path=str(self.db_path),
-            settings=Settings(
-                anonymized_telemetry=False,
-                allow_reset=True
+        if chroma_config["is_railway"] and chroma_config["host"]:
+            # Railway environment - use HTTP client
+            print(f"Connecting to Railway ChromaDB at {chroma_config['host']}")
+            
+            # Parse the URL to extract components
+            parsed_url = urllib.parse.urlparse(chroma_config['host'])
+            host = parsed_url.hostname or parsed_url.netloc
+            port = parsed_url.port or (443 if parsed_url.scheme == 'https' else 80)
+            ssl = parsed_url.scheme == 'https'
+            
+            # Create settings for Railway ChromaDB
+            settings = Settings(
+                chroma_api_impl="chromadb.api.fastapi.FastAPI",
+                chroma_server_host=host,
+                chroma_server_http_port=port,
+                chroma_server_ssl_enabled=ssl,
+                chroma_server_headers={"Authorization": f"Bearer {chroma_config['auth_token']}"} if chroma_config['auth_token'] else {}
             )
-        )
+            
+            # Initialize HTTP client for Railway
+            self.client = chromadb.HttpClient(
+                host=host,
+                port=port,
+                ssl=ssl,
+                headers={"Authorization": f"Bearer {chroma_config['auth_token']}"} if chroma_config['auth_token'] else {},
+                settings=settings
+            )
+            self.db_path = None  # No local path in Railway
+        else:
+            # Local environment - use persistent client
+            self.db_path = Path(db_path)
+            self.db_path.mkdir(parents=True, exist_ok=True)
+            
+            # Initialize ChromaDB client
+            self.client = chromadb.PersistentClient(
+                path=str(self.db_path),
+                settings=Settings(
+                    anonymized_telemetry=False,
+                    allow_reset=True
+                )
+            )
+            print(f"ChromaDB initialized at {self.db_path}")
         
         # Set up embedding function for search consistency
         self.embedding_function = None
@@ -33,8 +69,6 @@ class ChromaDBManager:
                     api_key=openai_api_key,
                     model_name="text-embedding-3-large"
                 )
-        
-        print(f"ChromaDB initialized at {self.db_path}")
     
     def create_collections(self):
         """Create collections for features and screenshots"""
@@ -353,7 +387,10 @@ class ChromaDBManager:
                     "count": 0
                 })
         
+        # Import config to check environment
+        from utils.config import get_environment
+        
         return {
-            "database_path": str(self.db_path),
+            "database_path": str(self.db_path) if self.db_path else f"Railway ChromaDB ({get_environment()})",
             "collections": collections
         } 

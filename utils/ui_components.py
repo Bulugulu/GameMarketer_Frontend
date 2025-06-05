@@ -46,34 +46,11 @@ def show_video_player():
             alt_path4 = video_path.replace("/", "\\")
             st.markdown(f"- Backslashes: `{alt_path4}` (exists: {os.path.exists(alt_path4)})")
     
-    # Find the correct video path
-    working_path = None
-    
-    if os.path.exists(video_path):
-        working_path = video_path
-    else:
-        # Try alternative paths
-        alternatives = []
-        
-        # Without screenshots prefix
-        if video_path.startswith("screenshots"):
-            alternatives.append(video_path.replace("screenshots/", "").replace("screenshots\\", ""))
-        
-        # With screenshots prefix
-        if not video_path.startswith("screenshots"):
-            alternatives.append(os.path.join("screenshots", video_path))
-        
-        # Try different slash styles
-        alternatives.append(video_path.replace("\\", "/"))
-        alternatives.append(video_path.replace("/", "\\"))
-        
-        for alt_path in alternatives:
-            if os.path.exists(alt_path):
-                working_path = alt_path
-                break
+    # Find the correct video path using centralized function
+    working_path = find_video_file(video_path)
     
     # Display video or error
-    if working_path and os.path.exists(working_path):
+    if working_path:
         try:
             st.success(f"✅ Video found at: `{working_path}`")
             
@@ -144,22 +121,19 @@ def show_video_player():
             
     else:
         st.error(f"❌ Video file not found")
-        st.markdown("**Attempted paths:**")
+        st.markdown("**Searched paths:**")
         st.markdown(f"- Primary: `{video_path}`")
         
-        # Show all attempted alternatives
-        alternatives = []
-        if video_path.startswith("screenshots"):
-            alternatives.append(video_path.replace("screenshots/", "").replace("screenshots\\", ""))
-        if not video_path.startswith("screenshots"):
-            alternatives.append(os.path.join("screenshots", video_path))
-        alternatives.extend([
-            video_path.replace("\\", "/"),
-            video_path.replace("/", "\\")
-        ])
+        # Show some attempted alternatives for debugging
+        normalized_path = video_path.replace('\\', '/').replace('//', '/')
+        st.markdown(f"- Normalized: `{normalized_path}`")
         
-        for i, alt in enumerate(alternatives, 1):
-            st.markdown(f"- Alternative {i}: `{alt}`")
+        if normalized_path.startswith("screenshots"):
+            clean_path = normalized_path.replace("screenshots/", "")
+            st.markdown(f"- Without prefix: `{clean_path}`")
+        else:
+            prefixed_path = os.path.join("screenshots", normalized_path)
+            st.markdown(f"- With prefix: `{prefixed_path}`")
         
         st.markdown("**Please ensure the video file exists in one of these locations.**")
         
@@ -363,4 +337,44 @@ def initialize_session_state():
     if "video_player_mode" not in st.session_state:
         st.session_state.video_player_mode = False
     if "current_screenshot_data" not in st.session_state:
-        st.session_state.current_screenshot_data = [] 
+        st.session_state.current_screenshot_data = []
+
+def find_video_file(video_path):
+    """Find the actual video file, trying multiple path combinations and extensions"""
+    if not video_path:
+        return None
+    
+    # Normalize path separators to avoid mixed separators
+    video_path = video_path.replace('\\', '/').replace('//', '/')
+    
+    alternatives = []
+    
+    # Try the path as-is first (normalized)
+    alternatives.append(os.path.normpath(video_path))
+    
+    # Try without screenshots prefix if it exists
+    if video_path.startswith("screenshots"):
+        clean_path = video_path.replace("screenshots/", "")
+        alternatives.append(os.path.normpath(clean_path))
+    
+    # Try with screenshots prefix if it doesn't exist
+    if not video_path.startswith("screenshots"):
+        prefixed_path = os.path.normpath(os.path.join("screenshots", video_path))
+        alternatives.append(prefixed_path)
+    
+    # Common video extensions to try
+    extensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.flv']
+    
+    # Create copies with different extensions
+    base_alternatives = alternatives[:]
+    for base_path in base_alternatives:
+        path_without_ext = os.path.splitext(base_path)[0]
+        for ext in extensions:
+            alternatives.append(path_without_ext + ext)
+    
+    # Check each alternative
+    for alt_path in alternatives:
+        if os.path.exists(alt_path):
+            return alt_path
+    
+    return None 

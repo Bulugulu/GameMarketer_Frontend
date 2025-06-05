@@ -97,7 +97,9 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 
                 # Construct full path by joining with base screenshots directory
                 if screenshot_path:
-                    full_screenshot_path = os.path.join("screenshots", screenshot_path)
+                    # Normalize path separators to avoid mixed separators on Windows
+                    normalized_path = screenshot_path.replace('\\', '/').replace('//', '/')
+                    full_screenshot_path = os.path.normpath(os.path.join("screenshots", normalized_path))
                 else:
                     full_screenshot_path = ""
                 
@@ -106,14 +108,14 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 # Check if path exists, if not try alternative extension
                 if full_screenshot_path and not os.path.exists(full_screenshot_path):
                     if screenshot_path.lower().endswith('.jpg'):
-                        alternative_relative_path = screenshot_path[:-4] + '.png'
-                        alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                        alternative_relative_path = normalized_path[:-4] + '.png'
+                        alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
                         if os.path.exists(alternative_full_path):
                             valid_path = alternative_full_path
                             print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
                     elif screenshot_path.lower().endswith('.png'):
-                        alternative_relative_path = screenshot_path[:-4] + '.jpg'
-                        alternative_full_path = os.path.join("screenshots", alternative_relative_path)
+                        alternative_relative_path = normalized_path[:-4] + '.jpg'
+                        alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
                         if os.path.exists(alternative_full_path):
                             valid_path = alternative_full_path
                             print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
@@ -121,6 +123,10 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 # Only process valid paths
                 if not (valid_path and os.path.exists(valid_path)):
                     print(f"[WARNING] Screenshot path not found: {valid_path}")
+                    # Additional debug info for troubleshooting
+                    print(f"[DEBUG] Original path from DB: {screenshot_path}")
+                    print(f"[DEBUG] Normalized path: {normalized_path}")
+                    print(f"[DEBUG] Full constructed path: {full_screenshot_path}")
                     continue
                 
                 # Handle video information - determine the best video source
@@ -132,10 +138,13 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 
                 if video_path and video_timestamp is not None:
                     # Construct full video path by joining with base screenshots directory
-                    full_video_path = os.path.join("screenshots", video_path)
+                    # Normalize path separators to avoid mixed separators on Windows
+                    normalized_video_path = video_path.replace('\\', '/').replace('//', '/')
+                    full_video_path = os.path.normpath(os.path.join("screenshots", normalized_video_path))
                     
                     print(f"[DEBUG] Video info found for screenshot {screenshot_id}:")
                     print(f"  - Raw video_path from DB: {video_path}")
+                    print(f"  - Normalized video path: {normalized_video_path}")
                     print(f"  - Full video path: {full_video_path}")
                     print(f"  - Video timestamp: {video_timestamp}")
                     print(f"  - File exists: {os.path.exists(full_video_path)}")

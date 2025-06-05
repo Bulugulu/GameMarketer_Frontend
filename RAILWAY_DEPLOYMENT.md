@@ -27,34 +27,46 @@ In your Railway project dashboard, go to the **Variables** tab and add the follo
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
 
-# Database Configuration (adjust based on your database setup)
-DB_HOST=your_database_host
-DB_NAME=township_db
-DB_USER=your_database_user
-DB_PASSWORD=your_database_password
-DB_PORT=5432
-
-# Streamlit Configuration (handled automatically by railway.toml)
-PORT=8080
-STREAMLIT_SERVER_PORT=8080
-STREAMLIT_SERVER_ADDRESS=0.0.0.0
-STREAMLIT_SERVER_HEADLESS=true
-STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
-```
-
-#### Optional Variables (if using Cohere reranking):
-```bash
+# Optional: Cohere API for reranking
 COHERE_API_KEY=your_cohere_api_key_here
 ```
 
+#### Database Configuration (Automatic):
+
+The app automatically detects Railway environment and uses the correct database variables:
+
+**Railway PostgreSQL** (automatically provided when you add PostgreSQL service):
+- `PGHOST` - postgres.railway.internal
+- `PGDATABASE` - railway
+- `PGUSER` - postgres
+- `PGPASSWORD` - (automatically generated)
+- `PGPORT` - 5432
+
+**Railway ChromaDB** (automatically provided when you add ChromaDB service):
+- `CHROMA_PRIVATE_URL` - http://chroma.railway.internal
+- `CHROMA_PUBLIC_URL` - https://your-chroma-instance.up.railway.app
+- `CHROMA_SERVER_AUTHN_CREDENTIALS` - (if authentication is enabled)
+
+**Local Development** uses different variable names:
+- `PG_HOST`, `PG_DATABASE`, `PG_USER`, `PG_PASSWORD`, `PG_PORT`
+- Local ChromaDB uses file-based storage
+
 ### 3. Database Setup
 
-If you need a PostgreSQL database, you can add one directly in Railway:
+#### PostgreSQL Setup:
 
 1. In your Railway project, click **+ New Service**
 2. Select **PostgreSQL** from the database options
-3. Railway will automatically create a database and provide connection details
-4. Copy the connection variables to your app's environment variables
+3. Railway will automatically create a database and provide connection variables
+4. The app will automatically use these variables (no manual configuration needed)
+
+#### ChromaDB Setup:
+
+1. In your Railway project, click **+ New Service**
+2. Select **Template** and search for "ChromaDB"
+3. Deploy the ChromaDB template
+4. Railway will provide the ChromaDB URL and credentials
+5. The app will automatically detect and use the Railway ChromaDB service
 
 ### 4. Deploy
 
@@ -67,8 +79,17 @@ If you need a PostgreSQL database, you can add one directly in Railway:
 - `Procfile`: Tells Railway how to run your Streamlit app
 - `railway.toml`: Configuration file with build and deployment settings
 - `requirements.txt`: Already exists with all necessary dependencies
+- `utils/config.py`: Updated to automatically detect Railway environment
 
 ## Configuration Details
+
+### Automatic Environment Detection
+
+The app automatically detects whether it's running on Railway or locally by checking for Railway-specific environment variables. This means:
+
+- **No manual configuration needed** - just deploy and it works
+- **Same codebase** works for both local development and Railway
+- **Automatic database switching** between local and Railway databases
 
 ### Procfile
 ```
@@ -85,10 +106,10 @@ web: streamlit run frontend_township.py --server.port=$PORT --server.address=0.0
 
 ### Common Issues:
 
-1. **App won't start**: Check that all environment variables are set correctly
-2. **Database connection errors**: Verify DB_* variables match your database configuration
-3. **OpenAI errors**: Ensure OPENAI_API_KEY is valid and has sufficient credits
-4. **Port binding issues**: Railway automatically sets PORT variable, ensure your app uses it
+1. **App won't start**: Check that OPENAI_API_KEY is set
+2. **Database connection errors**: Ensure PostgreSQL service is added to your Railway project
+3. **ChromaDB errors**: Verify ChromaDB service is running and accessible
+4. **OpenAI errors**: Ensure OPENAI_API_KEY is valid and has sufficient credits
 
 ### Logs
 Check Railway deployment logs in the **Deployments** tab for detailed error messages.
@@ -105,11 +126,30 @@ Railway will monitor your app's health at `/_stcore/health` endpoint. If this fa
 
 ## Production Considerations
 
-1. **Database**: Consider using Railway's PostgreSQL add-on for production
+1. **Database**: Railway's PostgreSQL and ChromaDB services are production-ready
 2. **Environment Variables**: Never commit API keys to your repository
 3. **Scaling**: Railway auto-scales based on usage
 4. **Monitoring**: Set up notifications for deployment failures
-5. **Backup**: Ensure your database has regular backups configured
+5. **Backup**: Configure regular backups for your PostgreSQL database
+
+## Environment Variable Reference
+
+### Detected Automatically on Railway:
+- `RAILWAY_ENVIRONMENT` - Indicates Railway environment
+- `RAILWAY_DEPLOYMENT_DRAINING_SECONDS` - Used for environment detection
+
+### PostgreSQL (Railway provides these):
+- `PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGPORT`
+- `DATABASE_URL`, `DATABASE_PUBLIC_URL`
+
+### ChromaDB (Railway provides these):
+- `CHROMA_PRIVATE_URL` - Internal URL for service-to-service communication
+- `CHROMA_PUBLIC_URL` - Public URL if needed
+- `CHROMA_SERVER_AUTHN_CREDENTIALS` - Authentication token if enabled
+
+### Required by You:
+- `OPENAI_API_KEY` - Your OpenAI API key
+- `COHERE_API_KEY` - Optional, for enhanced search reranking
 
 ## Support
 
