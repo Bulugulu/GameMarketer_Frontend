@@ -6,22 +6,5 @@ healthcheckPath = "/_stcore/health"
 healthcheckTimeout = 100
 restartPolicyType = "on_failure"
 
-[[deploy.environmentVariables]]
-name = "PORT"
-value = "8080"
-
-[[deploy.environmentVariables]]
-name = "STREAMLIT_SERVER_PORT"
-value = "8080"
-
-[[deploy.environmentVariables]]
-name = "STREAMLIT_SERVER_ADDRESS"
-value = "0.0.0.0"
-
-[[deploy.environmentVariables]]
-name = "STREAMLIT_SERVER_HEADLESS"
-value = "true"
-
-[[deploy.environmentVariables]]
-name = "STREAMLIT_BROWSER_GATHER_USAGE_STATS"
-value = "false" 
+# Note: Removed environment variable overrides to let Railway handle networking automatically
+# The Procfile will handle the server binding with dynamic $PORT variable 
