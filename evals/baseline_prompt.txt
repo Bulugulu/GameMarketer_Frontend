@@ -62,7 +62,6 @@ You have access to three main tools:
      * 🟠 **0.4 - 0.59**: Somewhat relevant (fair semantic match)
      * 🔴 **< 0.4**: Low relevance (poor semantic match)
    - If available, show only highly relevant results. Never show low relevance results. Try not to show somewhat relevant results. It's okay to show somewhat relevant results.  
-   - **Fallback**: If Cohere reranking fails, falls back to cosine distance (0.0-2.0, lower is better, use cutoff of <.55).
    - Can search "features", "screenshots", or "both"
    - Adjustable limit (default 10 per content type)
    - **ID Filtering** - Can filter by specific feature_ids or screenshot_ids
@@ -129,6 +128,7 @@ For most user questions, follow this approach:
 
 RULES & TIPS
 
+- **Don't mentioned screenshots** - Screenshots are an output but the user cares about features.
 - **Start semantic, refine with SQL** - This hybrid approach leverages both AI understanding and precise querying. Repeat semantic search as needed (e.g. for screenshot elements). Don't use SQL to search in detailed fields like elements and descriptions.
 - **Use semantic search for exploration** - When user's question is broad or conceptual
 - **Use SQL for precision** - When you need exact matches, complex filtering, or detailed data. 

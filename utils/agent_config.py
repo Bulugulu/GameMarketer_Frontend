@@ -146,6 +146,7 @@ For most user questions, follow this approach:
 
 RULES & TIPS
 
+- **Don't mentioned screenshots** - Screenshots are an output but the user cares about features.
 - **Start semantic, refine with SQL** - This hybrid approach leverages both AI understanding and precise querying. Repeat semantic search as needed (e.g. for screenshot elements). Don't use SQL to search in detailed fields like elements and descriptions.
 - **Use semantic search for exploration** - When user's question is broad or conceptual
 - **Use SQL for precision** - When you need exact matches, complex filtering, or detailed data. 

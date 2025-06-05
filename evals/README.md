@@ -48,6 +48,9 @@ python run_eval.py minigames --verbose
 
 # Run with custom output name
 python run_eval.py minigames --output my_experiment
+
+# Run the ChatGPT scoring test (requires OPENAI_API_KEY)
+python run_eval.py chatgpt_scoring_test
 ```
 
 ### Using Custom Configurations
@@ -80,7 +83,10 @@ Test configurations are JSON files that define:
       ],
       "expected_behaviors": {
         "should_produce_screenshots": true,
-        "min_relevance_score": 0.6
+        "min_relevance_score": 0.6,
+        "calculate_retrieval_rate": false,
+        "use_chatgpt_scoring": false,
+        "min_chatgpt_score": 0.7
       }
     }
   ],
@@ -104,6 +110,38 @@ The system automatically measures:
 - **Correct Feature Identification**: How many of the expected features were found
 - **Execution Time**: How long each test run took
 - **Error Rate**: Percentage of failed runs
+- **ChatGPT Relevance Scoring**: AI-powered evaluation of response relevance (optional)
+
+### ChatGPT Scoring Feature
+
+The framework now includes an optional ChatGPT-based scoring system that evaluates how relevant and helpful the agent's responses are to the user's questions. This provides an objective, AI-powered assessment of response quality.
+
+**Key Features:**
+- Uses GPT-4 to score responses on a 0.0-1.0 scale
+- Provides detailed rationale for each score
+- Enforces JSON output format for reliable parsing
+- Evaluates responses based on directness, helpfulness, and relevance
+
+**To enable ChatGPT scoring**, add this to your test configuration:
+
+```json
+{
+  "expected_behaviors": {
+    "use_chatgpt_scoring": true,
+    "min_chatgpt_score": 0.7
+  }
+}
+```
+
+**Requirements:**
+- Set the `OPENAI_API_KEY` environment variable
+- Ensure the `openai` Python package is installed
+
+**Sample output:**
+```
+ChatGPT Scoring Success Rate: 100.00%
+Avg ChatGPT Relevance Score: 0.847
+```
 
 ## Creating New System Prompt Variants
 
@@ -158,6 +196,8 @@ VARIANT: baseline
     Avg Feature Relevance: 0.923
     Avg Correct Features Found: 1.0
     Avg Execution Time: 12.45s
+    ChatGPT Scoring Success Rate: 100.00%
+    Avg ChatGPT Relevance Score: 0.847
 ```
 
 ## Adding New Tests

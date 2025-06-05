@@ -1,0 +1,29 @@
+EVALUATION SUMMARY REPORT
+==================================================
+
+Evaluation Date: 2025-06-04T20:03:04.408493
+Total Variants: 1
+Total Tests: 2
+Runs per Variant: 3
+
+
+VARIANT: baseline
+----------------------------------------
+
+  Test: minigames_with_chatgpt_scoring
+    Success Rate: 3/3
+    Screenshot Production Rate: 100.00%
+    Avg Screenshots: 3.3
+    Avg Correct Features Found: 0.7
+    Avg Execution Time: 25.70s
+    ChatGPT Scoring Success Rate: 100.00%
+    Avg ChatGPT Relevance Score: 0.933
+
+  Test: farming_with_chatgpt_scoring
+    Success Rate: 3/3
+    Screenshot Production Rate: 100.00%
+    Avg Screenshots: 32.7
+    Avg Correct Features Found: 0.7
+    Avg Execution Time: 32.98s
+    ChatGPT Scoring Success Rate: 100.00%
+    Avg ChatGPT Relevance Score: 0.933

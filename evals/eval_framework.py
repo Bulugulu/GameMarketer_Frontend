@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, asdict
 import statistics
 import re
 from pathlib import Path
+import openai
 
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,6 +39,10 @@ class TestResult:
     total_available_screenshots: int = 0
     retrieval_rate: float = 0.0
     screenshots_retrieved_for_correct_features: int = 0
+    # New fields for ChatGPT scoring
+    chatgpt_relevance_score: Optional[float] = None
+    chatgpt_rationale: Optional[str] = None
+    chatgpt_scoring_error: Optional[str] = None
 
 @dataclass
 class VariantResults:
@@ -74,6 +79,9 @@ class VariantResults:
             "avg_total_available_screenshots": safe_mean([r.total_available_screenshots for r in successful_runs if r.total_available_screenshots > 0]),
             "avg_retrieval_rate": safe_mean([r.retrieval_rate for r in successful_runs if r.retrieval_rate > 0]),
             "avg_screenshots_retrieved_for_correct_features": safe_mean([r.screenshots_retrieved_for_correct_features for r in successful_runs]),
+            # ChatGPT scoring metrics
+            "chatgpt_scoring_success_rate": sum(1 for r in successful_runs if r.chatgpt_relevance_score is not None) / len(successful_runs) if successful_runs else 0,
+            "avg_chatgpt_relevance_score": safe_mean([r.chatgpt_relevance_score for r in successful_runs if r.chatgpt_relevance_score is not None]),
         }
 
 class EvalFramework:
@@ -169,6 +177,102 @@ class EvalFramework:
         metrics["found_feature_ids"] = list(found_ids)
         
         return metrics
+    
+    async def score_with_chatgpt(self, conversation_history: List[Dict[str, str]], user_question: str) -> Dict[str, Any]:
+        """
+        Use ChatGPT to score how relevant the assistant's answer is to the user's question
+        
+        Args:
+            conversation_history: List of conversation messages with 'role' and 'content' keys
+            user_question: The original user question to evaluate relevance against
+            
+        Returns:
+            Dict with 'score', 'rationale', and optional 'error' keys
+        """
+        try:
+            from openai import AsyncOpenAI
+            
+            # Set up OpenAI client - assumes API key is in environment
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                return {"error": "OpenAI API key not found in environment variables"}
+            
+            client = AsyncOpenAI(api_key=api_key)
+            
+            # Format the conversation for ChatGPT evaluation
+            conversation_text = ""
+            for msg in conversation_history:
+                role = msg.get('role', 'unknown')
+                content = msg.get('content', '')
+                conversation_text += f"{role}: {content}\n\n"
+            
+            # Create the evaluation prompt
+            evaluation_prompt = f"""
+You are an expert evaluator of AI assistant responses. Your task is to score how relevant and helpful an assistant's answer is to the user's question.
+
+Original User Question: "{user_question}"
+
+Conversation:
+{conversation_text}
+
+Please evaluate the assistant's response based on:
+1. How directly it addresses the user's question
+2. How helpful and informative the response is
+3. How well it provides actionable information or guidance
+4. Overall relevance to the user's intent
+
+Provide your evaluation as a JSON object with exactly this format:
+{{
+    "score": <number between 0.0 and 1.0>,
+    "rationale": "<detailed explanation of your scoring reasoning>"
+}}
+
+Score Guidelines:
+- 1.0: Perfect relevance, completely addresses the question with helpful information
+- 0.8-0.9: Highly relevant, mostly addresses the question with good information
+- 0.6-0.7: Moderately relevant, partially addresses the question
+- 0.4-0.5: Somewhat relevant but missing key information
+- 0.2-0.3: Minimally relevant, tangentially relates to the question
+- 0.0-0.1: Not relevant, doesn't address the question
+
+Respond ONLY with the JSON object, no other text.
+"""
+
+            # Make the API call with JSON mode enforced
+            response = await client.chat.completions.create(
+                model="gpt-4o",  # Use gpt-4o which supports JSON mode
+                messages=[
+                    {"role": "system", "content": "You are a helpful evaluation assistant that responds only with valid JSON."},
+                    {"role": "user", "content": evaluation_prompt}
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.1,  # Low temperature for consistent scoring
+                max_tokens=500
+            )
+            
+            # Parse the response
+            response_text = response.choices[0].message.content.strip()
+            result = json.loads(response_text)
+            
+            # Validate the response format
+            if "score" not in result or "rationale" not in result:
+                return {"error": f"Invalid response format from ChatGPT: {response_text}"}
+            
+            # Validate score is a number between 0 and 1
+            try:
+                score = float(result["score"])
+                if not (0.0 <= score <= 1.0):
+                    return {"error": f"Score {score} is not between 0.0 and 1.0"}
+                result["score"] = score
+            except (ValueError, TypeError):
+                return {"error": f"Invalid score format: {result['score']}"}
+            
+            return result
+            
+        except json.JSONDecodeError as e:
+            return {"error": f"Failed to parse ChatGPT response as JSON: {e}"}
+        except Exception as e:
+            return {"error": f"ChatGPT scoring failed: {e}"}
     
     async def run_single_test(self, test_config: Dict, variant_name: str, variant_prompt: str, run_number: int) -> TestResult:
         """Run a single test with a specific variant"""
@@ -392,6 +496,44 @@ class EvalFramework:
             if test_config.get("expected_behaviors", {}).get("calculate_retrieval_rate", False):
                 await self._calculate_retrieval_rate(result, test_config, found_feature_ids, screenshots_data)
             
+            # **NEW: ChatGPT scoring if enabled in test config**
+            if test_config.get("expected_behaviors", {}).get("use_chatgpt_scoring", False):
+                print("[EVAL] Running ChatGPT scoring evaluation...")
+                
+                # Determine the primary user question for evaluation
+                # Use the last user message or first step as the main question
+                primary_question = ""
+                if conversation_history:
+                    # Find the last user message
+                    for msg in reversed(conversation_history):
+                        if msg["role"] == "user":
+                            primary_question = msg["content"]
+                            break
+                else:
+                    # Fall back to first step if no conversation history
+                    if test_config.get("steps"):
+                        primary_question = test_config["steps"][0]
+                
+                if primary_question and conversation_history:
+                    try:
+                        chatgpt_result = await self.score_with_chatgpt(conversation_history, primary_question)
+                        
+                        if "error" in chatgpt_result:
+                            result.chatgpt_scoring_error = chatgpt_result["error"]
+                            print(f"[EVAL] ChatGPT scoring failed: {chatgpt_result['error']}")
+                        else:
+                            result.chatgpt_relevance_score = chatgpt_result["score"]
+                            result.chatgpt_rationale = chatgpt_result["rationale"]
+                            print(f"[EVAL] ChatGPT scored conversation: {result.chatgpt_relevance_score:.3f}")
+                            print(f"[EVAL] ChatGPT rationale: {result.chatgpt_rationale[:100]}...")
+                            
+                    except Exception as scoring_error:
+                        result.chatgpt_scoring_error = str(scoring_error)
+                        print(f"[EVAL] ChatGPT scoring exception: {scoring_error}")
+                else:
+                    result.chatgpt_scoring_error = "No conversation history or primary question available for scoring"
+                    print("[EVAL] ChatGPT scoring skipped: no conversation data")
+            
         except Exception as e:
             result.error = str(e)
             print(f"[EVAL] Test execution error: {e}")
@@ -572,6 +714,11 @@ class EvalFramework:
                         if metrics.get('avg_screenshots_retrieved_for_correct_features'):
                             f.write(f"    Avg Screenshots Retrieved for Correct Features: {metrics['avg_screenshots_retrieved_for_correct_features']:.1f}\n")
                         f.write(f"    Avg Execution Time: {metrics['avg_execution_time']:.2f}s\n")
+                        # ChatGPT scoring metrics
+                        if metrics.get('chatgpt_scoring_success_rate') is not None:
+                            f.write(f"    ChatGPT Scoring Success Rate: {metrics['chatgpt_scoring_success_rate']:.2%}\n")
+                        if metrics.get('avg_chatgpt_relevance_score') is not None:
+                            f.write(f"    Avg ChatGPT Relevance Score: {metrics['avg_chatgpt_relevance_score']:.3f}\n")
         
         print(f"\nReports saved to:\n  - {output_path}\n  - {summary_path}")
 

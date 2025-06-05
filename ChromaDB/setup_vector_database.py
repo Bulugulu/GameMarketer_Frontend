@@ -189,7 +189,7 @@ def main():
     parser.add_argument("--fast", action="store_true", 
                        help="Quick preset: --rate-limit 0.01 (good for paid accounts)")
     parser.add_argument("--max-speed", action="store_true", 
-                       help="Maximum speed preset: --rate-limit 0 --dimensions 1536 (enterprise accounts)")
+                       help="Maximum speed preset: --rate-limit 0 with full 3072 dimensions (enterprise accounts)")
     
     args = parser.parse_args()
     
@@ -199,8 +199,8 @@ def main():
         print("🚀 Fast preset: Using 10ms rate limit (good for paid accounts)")
     elif args.max_speed:
         args.rate_limit = 0
-        args.dimensions = args.dimensions or 1536
-        print("🏎️ Maximum speed preset: No rate limit + reduced dimensions (enterprise accounts)")
+        # Keep full 3072 dimensions for maximum quality, speed comes from zero rate limiting
+        print("🏎️ Maximum speed preset: No rate limit with full dimensions (enterprise accounts)")
     
     if args.test:
         print("🧪 Running in test mode with limited data...")
