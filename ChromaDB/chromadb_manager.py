@@ -26,15 +26,17 @@ class ChromaDBManager:
                 # For Railway's template, use the full URL as the path
                 # Railway ChromaDB expects the full URL including protocol
                 if chroma_config['auth_token']:
-                    # Use authenticated client as per Railway template docs
+                    # Use authenticated client as per ChromaDB 0.6.3 documentation
+                    # https://cookbook.chromadb.dev/running/running-chroma/
                     self.client = chromadb.HttpClient(
                         host=chroma_config['host'],  # Full URL for Railway
                         settings=Settings(
-                            chroma_client_auth_provider="chromadb.auth.token.TokenAuthClientProvider",
-                            chroma_client_auth_credentials=chroma_config['auth_token']
+                            chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
+                            chroma_client_auth_credentials=chroma_config['auth_token'],
+                            chroma_client_auth_token_transport_header="Authorization"
                         )
                     )
-                    print(f"✓ Initialized Railway ChromaDB client with authentication")
+                    print(f"✓ Initialized Railway ChromaDB client with token authentication")
                 else:
                     # Fallback without auth (if auth not configured)
                     self.client = chromadb.HttpClient(host=chroma_config['host'])
