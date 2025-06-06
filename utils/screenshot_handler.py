@@ -3,6 +3,8 @@ import uuid
 import streamlit as st
 from typing import List, Dict, Any
 from database_tool import run_sql_query
+from .config import get_screenshot_config
+from .r2_client import get_r2_client
 
 def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords: List[str] = None) -> Dict[str, Any]:
     """
@@ -15,8 +17,13 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     full paths (e.g., "screenshots/uploads/folder/file.png").
     
     Enhanced with video tracking: now includes video information for each screenshot.
+    Enhanced with R2 support: can serve screenshots from R2 or local filesystem.
     """
     print(f"[DEBUG] retrieve_screenshots_for_display called with {len(screenshot_ids)} screenshot IDs")
+    
+    # Get screenshot configuration
+    screenshot_config = get_screenshot_config()
+    print(f"[DEBUG] Screenshot serving mode: {screenshot_config['mode']}")
     
     # Enhanced query to include video information
     query = f"""
@@ -83,6 +90,14 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         screenshot_groups = {}
         processed_count = 0
         
+        # Initialize R2 client if needed
+        r2_client = None
+        if screenshot_config['is_r2']:
+            r2_client = get_r2_client()
+            if not r2_client.is_configured():
+                print("[WARNING] R2 mode selected but R2 client not configured. Falling back to local mode.")
+                screenshot_config = {"mode": "local", "is_r2": False, "is_local": True}
+        
         for row in rows:
             try:
                 row_dict = dict(zip(columns, row))
@@ -95,39 +110,56 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 # Get the path from database (relative path)
                 screenshot_path = row_dict.get("path", "")
                 
-                # Construct full path by joining with base screenshots directory
-                if screenshot_path:
+                if not screenshot_path:
+                    print(f"[WARNING] No path found for screenshot {screenshot_id}")
+                    continue
+                
+                # Handle different serving modes
+                if screenshot_config['is_r2']:
+                    # R2 mode - generate presigned URL
+                    # Normalize path separators for R2
+                    normalized_path = screenshot_path.replace('\\', '/').replace('//', '/')
+                    
+                    # Generate presigned URL
+                    presigned_url = r2_client.get_screenshot_url(normalized_path)
+                    if not presigned_url:
+                        print(f"[WARNING] Failed to generate R2 URL for {normalized_path}")
+                        continue
+                    
+                    valid_path = presigned_url
+                    print(f"[DEBUG] Generated R2 URL for {normalized_path}")
+                    
+                else:
+                    # Local mode - construct file system path
                     # Normalize path separators to avoid mixed separators on Windows
                     normalized_path = screenshot_path.replace('\\', '/').replace('//', '/')
                     full_screenshot_path = os.path.normpath(os.path.join("screenshots", normalized_path))
-                else:
-                    full_screenshot_path = ""
-                
-                valid_path = full_screenshot_path
-                
-                # Check if path exists, if not try alternative extension
-                if full_screenshot_path and not os.path.exists(full_screenshot_path):
-                    if screenshot_path.lower().endswith('.jpg'):
-                        alternative_relative_path = normalized_path[:-4] + '.png'
-                        alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
-                        if os.path.exists(alternative_full_path):
-                            valid_path = alternative_full_path
-                            print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
-                    elif screenshot_path.lower().endswith('.png'):
-                        alternative_relative_path = normalized_path[:-4] + '.jpg'
-                        alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
-                        if os.path.exists(alternative_full_path):
-                            valid_path = alternative_full_path
-                            print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
-                
-                # Only process valid paths
-                if not (valid_path and os.path.exists(valid_path)):
-                    print(f"[WARNING] Screenshot path not found: {valid_path}")
-                    # Additional debug info for troubleshooting
-                    print(f"[DEBUG] Original path from DB: {screenshot_path}")
-                    print(f"[DEBUG] Normalized path: {normalized_path}")
-                    print(f"[DEBUG] Full constructed path: {full_screenshot_path}")
-                    continue
+                    
+                    valid_path = full_screenshot_path
+                    
+                    # Check if path exists, if not try alternative extension
+                    if full_screenshot_path and not os.path.exists(full_screenshot_path):
+                        if screenshot_path.lower().endswith('.jpg'):
+                            alternative_relative_path = normalized_path[:-4] + '.png'
+                            alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
+                            if os.path.exists(alternative_full_path):
+                                valid_path = alternative_full_path
+                                print(f"[INFO] Using PNG instead of JPG for {os.path.basename(screenshot_path)}")
+                        elif screenshot_path.lower().endswith('.png'):
+                            alternative_relative_path = normalized_path[:-4] + '.jpg'
+                            alternative_full_path = os.path.normpath(os.path.join("screenshots", alternative_relative_path))
+                            if os.path.exists(alternative_full_path):
+                                valid_path = alternative_full_path
+                                print(f"[INFO] Using JPG instead of PNG for {os.path.basename(screenshot_path)}")
+                    
+                    # Only process valid paths for local mode
+                    if not (valid_path and os.path.exists(valid_path)):
+                        print(f"[WARNING] Screenshot path not found: {valid_path}")
+                        # Additional debug info for troubleshooting
+                        print(f"[DEBUG] Original path from DB: {screenshot_path}")
+                        print(f"[DEBUG] Normalized path: {normalized_path}")
+                        print(f"[DEBUG] Full constructed path: {full_screenshot_path}")
+                        continue
                 
                 # Handle video information - determine the best video source
                 video_info = None
@@ -137,17 +169,24 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 video_timestamp = row_dict.get("video_timestamp_seconds") or row_dict.get("xref_timestamp")
                 
                 if video_path and video_timestamp is not None:
-                    # Construct full video path by joining with base screenshots directory
-                    # Normalize path separators to avoid mixed separators on Windows
-                    normalized_video_path = video_path.replace('\\', '/').replace('//', '/')
-                    full_video_path = os.path.normpath(os.path.join("screenshots", normalized_video_path))
+                    if screenshot_config['is_r2']:
+                        # R2 mode - generate presigned URL for video
+                        normalized_video_path = video_path.replace('\\', '/').replace('//', '/')
+                        video_presigned_url = r2_client.get_screenshot_url(normalized_video_path)
+                        full_video_path = video_presigned_url or video_path  # Fallback to original path
+                    else:
+                        # Local mode - construct full video path
+                        normalized_video_path = video_path.replace('\\', '/').replace('//', '/')
+                        full_video_path = os.path.normpath(os.path.join("screenshots", normalized_video_path))
                     
                     print(f"[DEBUG] Video info found for screenshot {screenshot_id}:")
                     print(f"  - Raw video_path from DB: {video_path}")
                     print(f"  - Normalized video path: {normalized_video_path}")
                     print(f"  - Full video path: {full_video_path}")
                     print(f"  - Video timestamp: {video_timestamp}")
-                    print(f"  - File exists: {os.path.exists(full_video_path)}")
+                    
+                    if screenshot_config['is_local']:
+                        print(f"  - File exists: {os.path.exists(full_video_path)}")
                     
                     video_info = {
                         "video_id": row_dict.get("video_id"),
@@ -174,7 +213,8 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                         "screenshot_id": screenshot_id,
                         "elements": row_dict.get("elements", {}),
                         "screen_name": row_dict.get("screen_name", ""),
-                        "video_info": video_info
+                        "video_info": video_info,
+                        "serving_mode": screenshot_config['mode']  # Add serving mode info
                     }
                     processed_count += 1
                     
@@ -201,7 +241,8 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                     "caption": s["caption"],
                     "screenshot_id": s["screenshot_id"],
                     "elements": s["elements"],
-                    "screen_name": s["screen_name"]
+                    "screen_name": s["screen_name"],
+                    "serving_mode": s["serving_mode"]
                 }
                 
                 # Add video information if available
@@ -216,7 +257,8 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 "group_title": feature_name,
                 "image_paths": image_paths,
                 "group_type": "feature",  # Add identifier for UI handling
-                "screenshot_data": screenshot_data  # Include full screenshot data with video info
+                "screenshot_data": screenshot_data,  # Include full screenshot data with video info
+                "serving_mode": screenshot_config['mode']  # Add serving mode to group
             })
             
             # Prepare info for agent
@@ -227,13 +269,15 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                 "video_enabled_count": video_count,
                 "captions": [s["caption"] for s in screenshots if s.get("caption")],
                 "elements": [s["elements"] for s in screenshots if s.get("elements")],
-                "screen_names": list(set([s["screen_name"] for s in screenshots if s.get("screen_name")]))
+                "screen_names": list(set([s["screen_name"] for s in screenshots if s.get("screen_name")])),
+                "serving_mode": screenshot_config['mode']
             })
         
         print(f"[DEBUG] Returning {len(screenshots_for_ui)} groups for UI display")
+        print(f"[DEBUG] Screenshots served via: {screenshot_config['mode']}")
         
         return {
-            "message_for_agent": f"Retrieved {processed_count} screenshots for display across {len(screenshot_groups)} features.",
+            "message_for_agent": f"Retrieved {processed_count} screenshots for display across {len(screenshot_groups)} features. Screenshots served via {screenshot_config['mode']}.",
             "screenshots_for_ui": screenshots_for_ui,
             "retrieved_entries_info": retrieved_entries_info
         }

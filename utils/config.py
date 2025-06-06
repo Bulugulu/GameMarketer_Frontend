@@ -89,6 +89,33 @@ else:
     CHROMA_HOST = None  # Will use local file-based ChromaDB
     CHROMA_AUTH_TOKEN = None
 
+# Screenshot serving configuration
+def get_screenshot_mode():
+    """
+    Determine screenshot serving mode based on environment and configuration.
+    Returns 'r2' for R2 storage, 'local' for local filesystem.
+    """
+    # Check for manual override first
+    forced_mode = os.environ.get("SCREENSHOT_MODE")
+    if forced_mode in ["r2", "local"]:
+        return forced_mode
+    
+    # Auto-detect based on environment
+    if IS_RAILWAY:
+        # Check if R2 is configured
+        r2_vars = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME", "R2_ENDPOINT_URL"]
+        if all(os.environ.get(var) for var in r2_vars):
+            return "r2"
+        else:
+            print("⚠️ Railway environment detected but R2 not configured. Falling back to local mode.")
+            return "local"
+    else:
+        # Local development - default to local unless R2 is explicitly configured
+        return "local"
+
+SCREENSHOT_MODE = get_screenshot_mode()
+print(f"📸 Screenshot serving mode: {SCREENSHOT_MODE}")
+
 if API_KEY:
     CLIENT = OpenAI(api_key=API_KEY)
 else:
@@ -105,11 +132,40 @@ def get_api_key():
 def get_chroma_config():
     """Get ChromaDB configuration based on environment."""
     return {
+        "is_railway": IS_RAILWAY and CHROMA_HOST is not None,
         "host": CHROMA_HOST,
-        "auth_token": CHROMA_AUTH_TOKEN,
-        "is_railway": IS_RAILWAY
+        "auth_token": CHROMA_AUTH_TOKEN
     }
 
 def get_environment():
     """Get current environment (local or railway)."""
-    return "railway" if IS_RAILWAY else "local" 
+    return "railway" if IS_RAILWAY else "local"
+
+def get_screenshot_config():
+    """Get screenshot serving configuration."""
+    return {
+        "mode": SCREENSHOT_MODE,
+        "is_r2": SCREENSHOT_MODE == "r2",
+        "is_local": SCREENSHOT_MODE == "local"
+    }
+
+def get_r2_config():
+    """Get R2 configuration for debugging."""
+    return {
+        "account_id": os.environ.get("R2_ACCOUNT_ID"),
+        "bucket_name": os.environ.get("R2_BUCKET_NAME"),
+        "endpoint_url": os.environ.get("R2_ENDPOINT_URL"),
+        "access_key_configured": bool(os.environ.get("R2_ACCESS_KEY_ID")),
+        "secret_key_configured": bool(os.environ.get("R2_SECRET_ACCESS_KEY")),
+        "token_configured": bool(os.environ.get("R2_TOKEN"))
+    }
+
+def set_screenshot_mode(mode: str):
+    """Manually set screenshot mode (for debug toggle)."""
+    if mode in ["r2", "local"]:
+        os.environ["SCREENSHOT_MODE"] = mode
+        global SCREENSHOT_MODE
+        SCREENSHOT_MODE = mode
+        print(f"📸 Screenshot mode set to: {mode}")
+    else:
+        raise ValueError(f"Invalid screenshot mode: {mode}. Must be 'r2' or 'local'.") 

@@ -10,7 +10,7 @@ from utils import (
     display_developer_notes_panel,
     show_video_player
 )
-from utils.config import get_environment, get_chroma_config
+from utils.config import get_environment, get_chroma_config, get_screenshot_config, get_r2_config, set_screenshot_mode
 import os
 
 # Configure page to use wide layout
@@ -243,6 +243,7 @@ def main():
 
     # Debug information (show only if environment detection might be wrong)
     current_env = get_environment()
+    screenshot_config = get_screenshot_config()
     
     # Show debug info if we detect issues or if explicitly requested
     show_debug = st.sidebar.checkbox("🔧 Show Environment Debug", value=False)
@@ -270,6 +271,110 @@ def main():
             st.write(f"**ChromaDB Mode:** {'Railway HTTP' if chroma_config['is_railway'] else 'Local File'}")
             if chroma_config['host']:
                 st.write(f"**ChromaDB Host:** {chroma_config['host'][:50]}...")
+            
+            # Screenshot serving configuration
+            st.markdown("---")
+            st.write("**📸 Screenshot Configuration:**")
+            st.write(f"**Current Mode:** {screenshot_config['mode'].upper()}")
+            
+            if screenshot_config['is_r2']:
+                # Show R2 configuration
+                r2_config = get_r2_config()
+                st.write("**R2 Configuration:**")
+                for key, value in r2_config.items():
+                    if key.endswith('_configured'):
+                        status = "✅" if value else "❌"
+                        label = key.replace('_configured', '').replace('_', ' ').title()
+                        st.write(f"{status} {label}: {'Configured' if value else 'Not configured'}")
+                    elif value:
+                        display = value[:20] + "..." if isinstance(value, str) and len(value) > 20 else value
+                        st.write(f"   {key.replace('_', ' ').title()}: `{display}`")
+                
+                # Test R2 connection
+                if st.button("🧪 Test R2 Connection", key="test_r2_connection"):
+                    st.write("**Testing R2 Connection...**")
+                    try:
+                        from utils.r2_client import get_r2_client
+                        r2_client = get_r2_client()
+                        
+                        if r2_client.is_configured():
+                            # Test by listing some objects
+                            objects = r2_client.list_objects(max_keys=5)
+                            st.success("✅ R2 connection successful!")
+                            st.write(f"Found {len(objects)} objects in bucket (showing first 5)")
+                            
+                            if objects:
+                                for obj in objects[:3]:
+                                    st.write(f"   - {obj['key']} ({obj['size']} bytes)")
+                            
+                            # Test URL generation
+                            if objects:
+                                test_key = objects[0]['key']
+                                test_url = r2_client.get_screenshot_url(test_key)
+                                if test_url:
+                                    st.write(f"✅ URL generation test successful")
+                                    st.write(f"   Sample URL: {test_url[:60]}...")
+                                else:
+                                    st.error("❌ URL generation failed")
+                        else:
+                            st.error("❌ R2 client not properly configured")
+                            
+                    except Exception as e:
+                        st.error(f"❌ R2 connection test failed: {e}")
+            
+            else:
+                st.write("**Local File System Mode**")
+                screenshots_dir = os.path.join(os.getcwd(), "screenshots")
+                st.write(f"Screenshots directory: `{screenshots_dir}`")
+                st.write(f"Directory exists: {'✅' if os.path.exists(screenshots_dir) else '❌'}")
+                
+                if os.path.exists(screenshots_dir):
+                    try:
+                        file_count = len([f for f in os.listdir(screenshots_dir) if os.path.isfile(os.path.join(screenshots_dir, f))])
+                        dir_count = len([d for d in os.listdir(screenshots_dir) if os.path.isdir(os.path.join(screenshots_dir, d))])
+                        st.write(f"Contains: {file_count} files, {dir_count} directories")
+                    except Exception as e:
+                        st.write(f"Error reading directory: {e}")
+            
+            # Screenshot mode toggle
+            st.markdown("**🔄 Screenshot Mode Toggle:**")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📁 Use Local Mode", 
+                           disabled=screenshot_config['is_local'],
+                           help="Serve screenshots from local filesystem"):
+                    try:
+                        set_screenshot_mode("local")
+                        st.success("Switched to local mode!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Failed to switch to local mode: {e}")
+            
+            with col2:
+                if st.button("☁️ Use R2 Mode", 
+                           disabled=screenshot_config['is_r2'],
+                           help="Serve screenshots from Cloudflare R2"):
+                    try:
+                        # Check if R2 is configured before switching
+                        from utils.r2_client import get_r2_client
+                        r2_client = get_r2_client()
+                        
+                        if r2_client.is_configured():
+                            set_screenshot_mode("r2")
+                            st.success("Switched to R2 mode!")
+                            st.rerun()
+                        else:
+                            st.error("Cannot switch to R2 mode: R2 not configured properly")
+                    except Exception as e:
+                        st.error(f"Failed to switch to R2 mode: {e}")
+            
+            if os.environ.get("SCREENSHOT_MODE"):
+                st.info(f"📌 Screenshot mode manually set via SCREENSHOT_MODE")
+                if st.button("🔄 Reset Mode (Auto-detect)", key="reset_screenshot_mode"):
+                    if "SCREENSHOT_MODE" in os.environ:
+                        del os.environ["SCREENSHOT_MODE"]
+                    st.rerun()
             
             # Railway ChromaDB specific debugging
             if chroma_config['is_railway']:
