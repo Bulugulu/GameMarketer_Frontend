@@ -16,7 +16,7 @@ import urllib.parse
 class RailwayChromaDBManager:
     def __init__(self):
         # Load environment variables
-        load_dotenv('.env.local')
+        load_dotenv('../.env.local')
         
         # Get Railway ChromaDB credentials
         self.chroma_url = os.getenv("CHROMA_PUBLIC_URL")

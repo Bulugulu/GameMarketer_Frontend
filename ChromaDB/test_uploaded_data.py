@@ -13,17 +13,33 @@ def test_railway_data():
     print("🔍 Testing Uploaded Data in Railway ChromaDB")
     print("=" * 50)
     
-    # Load environment variables
-    load_dotenv('.env.local')
+    # Load environment variables from root directory
+    load_dotenv('../.env.local')
     
-    base_url = os.getenv("CHROMA_PUBLIC_URL").rstrip('/')
+    base_url = os.getenv("CHROMA_PUBLIC_URL")
     token = os.getenv("CHROMA_SERVER_AUTHN_CREDENTIALS")
     openai_api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not base_url:
+        print("❌ CHROMA_PUBLIC_URL not found in environment variables")
+        return False
+    
+    if not token:
+        print("❌ CHROMA_SERVER_AUTHN_CREDENTIALS not found in environment variables")
+        return False
+        
+    if not openai_api_key:
+        print("❌ OPENAI_API_KEY not found in environment variables")
+        return False
+    
+    base_url = base_url.rstrip('/')
     
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
+    
+    print(f"🌐 Connecting to: {base_url}")
     
     # Collection UUIDs (from the upload)
     screenshots_uuid = "1b9de2ef-758f-4639-bb99-9703d5042414"
