@@ -4,7 +4,7 @@ Test script to verify Railway configuration for PostgreSQL and ChromaDB
 import os
 import sys
 from dotenv import load_dotenv
- 
+  
 # Load environment variables
 load_dotenv(".env.local")
 
