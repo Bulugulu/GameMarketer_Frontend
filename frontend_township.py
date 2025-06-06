@@ -320,8 +320,7 @@ def main():
                                             host=url,
                                             settings=Settings(
                                                 chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-                                                chroma_client_auth_credentials=chroma_token,
-                                                chroma_client_auth_token_transport_header="Authorization"
+                                                chroma_client_auth_credentials=chroma_token
                                             )
                                         )
                                         

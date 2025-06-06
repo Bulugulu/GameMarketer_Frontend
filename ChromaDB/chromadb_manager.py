@@ -32,8 +32,8 @@ class ChromaDBManager:
                         host=chroma_config['host'],  # Full URL for Railway
                         settings=Settings(
                             chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-                            chroma_client_auth_credentials=chroma_config['auth_token'],
-                            chroma_client_auth_token_transport_header="Authorization"
+                            chroma_client_auth_credentials=chroma_config['auth_token']
+                            # Note: chroma_client_auth_token_transport_header is not supported in 0.6.3
                         )
                     )
                     print(f"✓ Initialized Railway ChromaDB client with token authentication")

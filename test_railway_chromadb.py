@@ -53,8 +53,8 @@ for url_type, url in test_urls:
                     host=url,
                     settings=Settings(
                         chroma_client_auth_provider="chromadb.auth.token_authn.TokenAuthClientProvider",
-                        chroma_client_auth_credentials=chroma_token,
-                        chroma_client_auth_token_transport_header="Authorization"
+                        chroma_client_auth_credentials=chroma_token
+                        # Note: chroma_client_auth_token_transport_header not supported in 0.6.3
                     )
                 )
                 
