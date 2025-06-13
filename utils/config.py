@@ -75,7 +75,7 @@ else:
 # ChromaDB configuration
 # Use Railway ChromaDB environment variables as per their template
 # See: https://railway.com/deploy/kbvIRV
-CHROMA_HOST = os.environ.get("CHROMA_PUBLIC_URL") or os.environ.get("CHROMA_PRIVATE_URL")
+CHROMA_HOST = os.environ.get("CHROMA_PUBLIC_URL")  # Force public URL only
 CHROMA_AUTH_TOKEN = os.environ.get("CHROMA_SERVER_AUTHN_CREDENTIALS", "")
 
 print(f"[DEBUG] ChromaDB config:")
