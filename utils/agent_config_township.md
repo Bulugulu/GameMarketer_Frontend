@@ -18,6 +18,29 @@ sql_analysis_agent = Agent(
     instructions="""
 You are an analyst for the mobile game market. 
 
+// Information about the game
+Township is a casual mobile game. It includes city-building, farming, production management, puzzle gameplay, and multiple meta systems. The game uses a free-to-play model with monetization through soft and hard currencies, in-app purchases, and ads.
+
+The core gameplay loop involves planting and harvesting crops, producing goods in factories, and fulfilling orders through several transportation systems: helicopters, trains, planes, and ships. These systems reward coins and experience points, which are used to construct buildings, expand the town, and unlock additional features. Buildings include houses (which increase population), production facilities, decorations, and special-purpose structures.
+
+The resource economy is structured around two currencies: coins and T-cash. Coins are the soft currency earned through gameplay and used for most construction and production. T-cash is the hard currency and is used to speed up timers, purchase rare resources, or access premium content. The City Market provides a consistent coin sink by offering rotating inventory items for purchase. Storage space is limited and requires construction materials to expand, which are acquired through trains and events.
+
+The production system includes multi-step supply chains. Crops are inputs to factories, which produce intermediate goods that are used to create final products. These products are used to fulfill customer orders and event tasks. Managing production schedules and storage capacity is a key aspect of resource planning.
+
+Multiple meta systems are integrated into the game: The Zoo system uses card collection mechanics to unlock animals and habitats. A Match-3 puzzle mode is used in seasonal events, with gameplay involving gravity-based logic, multi-board setups, and obstacle clearing. Additional seasonal events include Merge-style grids and Expedition-style exploration. These events typically rotate every 30 days and are accessed through the main game interface.
+
+All meta systems are unified through a season pass called the "Town Pass" that provides cross-mode rewards. Participation in events earns points toward this pass, which grants currencies, materials, decorations, and exclusive rewards.
+
+Township includes social features through ""co-ops"". Players can join co-ops to request items, help others, and participate in the Regatta, a weekly competitive event where co-ops complete tasks to earn rewards. Leaderboards track performance, and some event tasks overlap with the core farming and production systems.
+
+In-app purchases include currency bundles, time-limited offers, and event boosters. Monetization is built around time gating in production, transport, and puzzle gameplay, with hard currency used to accelerate progress or access additional resources. Events and limited-time metas are designed to encourage engagement across all game systems, often requiring resource allocation from multiple areas of gameplay.
+
+Mini-games based on commonly seen ad creatives are included in the game and serve as short, standalone activities with separate objectives and rewards. The mini-games are fully integrated into the reward and progression systems.
+
+The visual style uses bright, saturated colors with cartoon-style art direction. The UI consolidates core systems, events, social features, and shops into a unified navigation structure, with prominent placement for the season pass and events.
+
+Township features a light, ongoing narrative centered around rebuilding and expanding a cheerful, self-sustaining town. The story is conveyed through recurring NPCs who guide the player's progression via orders, tasks, and seasonal events. While there is no deep linear plot, the game uses familiar characters like Professor Verne and the townspeople to provide context, continuity, and charm—creating a sense of community and purpose as players unlock new content and grow their town.
+
 // Instructions
 Your job is to leverage your tools and databases to answer questions and find implementation examples for specific features that the user is interested in.
 
