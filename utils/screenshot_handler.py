@@ -11,13 +11,17 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     Retrieves and prepares screenshots for display based on screenshot_ids.
     This function is called by the agent via the tool.
     
-    Screenshots are now grouped by feature name from the features_game table.
+    Screenshots are now grouped by feature_id and game_id combination to ensure
+    features with the same name from different games are displayed separately.
+    Each group includes the game name as a subtitle for better organization.
+    
     The function handles path resolution by combining the database's relative paths 
     (e.g., "uploads/folder/file.png") with the base "screenshots" directory to create 
     full paths (e.g., "screenshots/uploads/folder/file.png").
     
     Enhanced with video tracking: now includes video information for each screenshot.
     Enhanced with R2 support: can serve screenshots from R2 or local filesystem.
+    Enhanced with game information: displays game names as subtitles in UI sections.
     """
     print(f"[DEBUG] retrieve_screenshots_for_display called with {len(screenshot_ids)} screenshot IDs")
     
@@ -25,7 +29,7 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     screenshot_config = get_screenshot_config()
     print(f"[DEBUG] Screenshot serving mode: {screenshot_config['mode']}")
     
-    # Enhanced query to include video information
+    # Enhanced query to include video information and game details
     query = f"""
     SELECT 
         s.screenshot_id::text, 
@@ -36,6 +40,9 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         s.modal_name, 
         s.elements,
         COALESCE(f.name, 'Untagged Screenshots') as feature_name,
+        f.feature_id,
+        f.game_id::text,
+        g.name as game_name,
         sc.screen_name,
         -- Video tracking fields
         s.video_timestamp_seconds,
@@ -51,12 +58,13 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
     FROM screenshots s
     LEFT JOIN screenshot_feature_xref sfx ON s.screenshot_id = sfx.screenshot_id
     LEFT JOIN features_game f ON sfx.feature_id = f.feature_id
+    LEFT JOIN games g ON f.game_id = g.game_id
     LEFT JOIN screens sc ON s.screen_id = sc.screen_id
     -- Join with video cross-reference table (for many-to-many relationship)
     LEFT JOIN screenshot_video_xref svx ON s.screenshot_id = svx.screenshot_id
     LEFT JOIN videos v ON svx.video_id = v.video_id
     WHERE s.screenshot_id IN ('{"','".join(screenshot_ids)}')
-    ORDER BY COALESCE(f.name, 'Untagged Screenshots'), s.caption
+    ORDER BY COALESCE(g.name, 'Unknown Game'), COALESCE(f.name, 'Untagged Screenshots'), s.caption
     """
     
     print(f"[DEBUG] Executing SQL query for screenshot retrieval with video tracking")
@@ -86,7 +94,7 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         rows = result["rows"]
         print(f"[DEBUG] Retrieved {len(rows)} rows with columns: {columns}")
         
-        # Group screenshots by feature_name, handling video duplicates
+        # Group screenshots by feature_id + game_id combination, handling video duplicates
         screenshot_groups = {}
         processed_count = 0
         
@@ -102,10 +110,34 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
             try:
                 row_dict = dict(zip(columns, row))
                 feature_name = row_dict.get("feature_name") or "Unknown Feature"
+                feature_id = row_dict.get("feature_id")
+                game_id = row_dict.get("game_id")
+                game_name = row_dict.get("game_name") or "Unknown Game"
                 screenshot_id = row_dict.get("screenshot_id", "")
                 
-                if feature_name not in screenshot_groups:
-                    screenshot_groups[feature_name] = {}
+                # Create a unique group key based on feature_id and game_id
+                # For untagged screenshots, use a special key
+                if feature_id and game_id:
+                    group_key = f"{feature_id}_{game_id}"
+                else:
+                    # Handle untagged screenshots - group by game if available
+                    if game_id:
+                        group_key = f"untagged_{game_id}"
+                        feature_name = "Untagged Screenshots"
+                        game_name = row_dict.get("game_name") or "Unknown Game"
+                    else:
+                        group_key = "untagged_unknown"
+                        feature_name = "Untagged Screenshots"
+                        game_name = "Unknown Game"
+                
+                if group_key not in screenshot_groups:
+                    screenshot_groups[group_key] = {
+                        "screenshots": {},
+                        "feature_name": feature_name,
+                        "feature_id": feature_id,
+                        "game_id": game_id,
+                        "game_name": game_name
+                    }
                 
                 # Get the path from database (relative path)
                 screenshot_path = row_dict.get("path", "")
@@ -199,15 +231,15 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
                     }
                 
                 # Check if this screenshot is already processed (due to multiple video mappings)
-                if screenshot_id in screenshot_groups[feature_name]:
+                if screenshot_id in screenshot_groups[group_key]["screenshots"]:
                     # If we have better video info, update it
-                    existing_screenshot = screenshot_groups[feature_name][screenshot_id]
+                    existing_screenshot = screenshot_groups[group_key]["screenshots"][screenshot_id]
                     if video_info and (not existing_screenshot.get("video_info") or 
                                      video_info.get("confidence", 1.0) > existing_screenshot.get("video_info", {}).get("confidence", 0.0)):
                         existing_screenshot["video_info"] = video_info
                 else:
                     # Add new screenshot entry
-                    screenshot_groups[feature_name][screenshot_id] = {
+                    screenshot_groups[group_key]["screenshots"][screenshot_id] = {
                         "path": valid_path,
                         "caption": row_dict.get("caption", ""),
                         "screenshot_id": screenshot_id,
@@ -228,10 +260,15 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
         screenshots_for_ui = []
         retrieved_entries_info = []
         
-        for feature_name, screenshot_dict in screenshot_groups.items():
-            screenshots = list(screenshot_dict.values())
+        for group_key, group_data in screenshot_groups.items():
+            screenshots = list(group_data["screenshots"].values())
             if not screenshots:
                 continue
+            
+            feature_name = group_data["feature_name"]
+            game_name = group_data["game_name"]
+            feature_id = group_data["feature_id"]
+            game_id = group_data["game_id"]
             
             # Prepare data for UI including video info
             screenshot_data = []
@@ -255,6 +292,9 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
             
             screenshots_for_ui.append({
                 "group_title": feature_name,
+                "game_name": game_name,  # Add game name for subtitle display
+                "feature_id": feature_id,  # Add feature_id for identification
+                "game_id": game_id,  # Add game_id for identification
                 "image_paths": image_paths,
                 "group_type": "feature",  # Add identifier for UI handling
                 "screenshot_data": screenshot_data,  # Include full screenshot data with video info
@@ -265,6 +305,9 @@ def retrieve_screenshots_for_display(screenshot_ids: List[str], feature_keywords
             video_count = sum(1 for s in screenshots if s.get("video_info"))
             retrieved_entries_info.append({
                 "feature_name": feature_name,
+                "game_name": game_name,  # Add game name to info
+                "feature_id": feature_id,  # Add feature_id to info
+                "game_id": game_id,  # Add game_id to info
                 "screenshot_count": len(screenshots),
                 "video_enabled_count": video_count,
                 "captions": [s["caption"] for s in screenshots if s.get("caption")],

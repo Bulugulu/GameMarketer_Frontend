@@ -126,22 +126,35 @@ def display_screenshot_drawer():
     
     st.markdown("### 📸 Feature Screenshots")
     
-    # Group screenshots by feature to avoid duplicates
+    # Group screenshots by feature_id + game_id combination to avoid duplicates
     feature_groups = {}
     for screenshot_group in all_screenshots:
         group_title = screenshot_group.get("group_title", "Unknown")
-        if group_title not in feature_groups:
-            feature_groups[group_title] = screenshot_group
+        feature_id = screenshot_group.get("feature_id")
+        game_id = screenshot_group.get("game_id")
+        
+        # Create unique group key based on feature_id and game_id
+        if feature_id and game_id:
+            group_key = f"{feature_id}_{game_id}"
         else:
-            # Merge image paths if we have multiple groups with same title
-            existing_paths = set(feature_groups[group_title]["image_paths"])
+            # Handle untagged screenshots - group by game if available
+            if game_id:
+                group_key = f"untagged_{game_id}"
+            else:
+                group_key = f"untagged_unknown_{group_title}"  # Include title for uniqueness
+        
+        if group_key not in feature_groups:
+            feature_groups[group_key] = screenshot_group
+        else:
+            # Merge image paths if we have multiple groups with same key
+            existing_paths = set(feature_groups[group_key]["image_paths"])
             new_paths = screenshot_group.get("image_paths", [])
             for path in new_paths:
                 if path not in existing_paths:
-                    feature_groups[group_title]["image_paths"].append(path)
+                    feature_groups[group_key]["image_paths"].append(path)
     
     # Display each feature group
-    for idx, (feature_name, screenshot_group) in enumerate(feature_groups.items()):
+    for idx, (group_key, screenshot_group) in enumerate(feature_groups.items()):
         unique_key = f"drawer_group_{idx}"
         display_screenshot_group(screenshot_group, unique_key)
 

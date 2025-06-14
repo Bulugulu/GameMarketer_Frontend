@@ -201,12 +201,18 @@ def format_timestamp(seconds):
 def display_screenshot_group(screenshot_group, unique_key_prefix=""):
     """Helper function to display a screenshot group with clickable thumbnails and video buttons"""
     group_title = screenshot_group.get("group_title", "Retrieved Screenshots")
+    game_name = screenshot_group.get("game_name")  # Get game name for subtitle
     image_paths_for_grid = screenshot_group.get("image_paths", [])
     group_type = screenshot_group.get("group_type", "screen")  # New field to identify feature groups
     screenshot_data = screenshot_group.get("screenshot_data", [])  # Enhanced data with video info
     serving_mode = screenshot_group.get("serving_mode", "local")  # Add serving mode info
     
+    # Display feature name as main title
     st.write(f"**{group_title}**")
+    
+    # Display game name as subtitle if available
+    if game_name and game_name != "Unknown Game":
+        st.caption(f"🎮 {game_name}")
     
     # Show serving mode indicator
     if serving_mode == "r2":
@@ -226,6 +232,7 @@ def display_screenshot_group(screenshot_group, unique_key_prefix=""):
             st.session_state.current_fullscreen_images = image_paths_for_grid
             st.session_state.current_image_index = 0
             st.session_state.current_group_title = group_title
+            st.session_state.current_game_name = game_name  # Store game name for fullscreen display
             # Store screenshot data for video access in fullscreen mode
             st.session_state.current_screenshot_data = screenshot_data
             st.rerun()
@@ -257,6 +264,7 @@ def display_screenshot_group(screenshot_group, unique_key_prefix=""):
                             st.session_state.current_fullscreen_images = image_paths_for_grid
                             st.session_state.current_image_index = index
                             st.session_state.current_group_title = group_title
+                            st.session_state.current_game_name = game_name  # Store game name for fullscreen display
                             st.session_state.current_screenshot_data = screenshot_data
                             st.rerun()
                     
@@ -306,6 +314,12 @@ def show_fullscreen_image():
     
     # Display current image info
     st.markdown(f"**{st.session_state.current_group_title}**")
+    
+    # Display game name if available
+    current_game_name = st.session_state.get("current_game_name")
+    if current_game_name and current_game_name != "Unknown Game":
+        st.caption(f"🎮 {current_game_name}")
+    
     st.markdown(f"Image {current_index + 1} of {len(images)}")
     
     # Show video button for current image if available
@@ -397,6 +411,8 @@ def initialize_session_state():
         st.session_state.current_image_index = 0
     if "current_group_title" not in st.session_state:
         st.session_state.current_group_title = ""
+    if "current_game_name" not in st.session_state:
+        st.session_state.current_game_name = ""
     if "waiting_for_response" not in st.session_state:
         st.session_state.waiting_for_response = False
     # Video player state
