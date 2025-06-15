@@ -13,7 +13,7 @@ except Exception as e:
 # Initialize OpenAI client
 API_KEY = os.environ.get("OPENAI_API_KEY")
 CLIENT = None
-MODEL_NAME = "gpt-4o-2024-08-06"  # Use latest gpt-4o with larger context window (128k tokens)
+MODEL_NAME = "gpt-4o"  # Use a model that works well with Agents SDK
 
 # Better Railway environment detection
 def is_railway_environment():
